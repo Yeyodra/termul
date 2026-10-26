@@ -5,6 +5,7 @@ import { GitBranchPicker } from '@/components/GitBranchPicker'
 import { Check, Download, FileQuestion, Folder, Pencil, Plus, X } from '@/components/icons'
 import { ProjectIcon } from '@/components/ProjectIcon'
 import { RemoteAccessPopover } from '@/components/RemoteAccessPopover'
+import { RobloxStudioIndicator } from '@/components/RobloxStudioIndicator'
 import { StatusBarTerminalButton } from '@/components/StatusBarTerminalButton'
 import { STATUS_BAR_HOVER_CLASS, STATUS_BAR_ITEM_CLASS } from '@/components/status-bar-hit'
 import { FOCUS_RING_CLASS } from '@/components/ui/panel-styles'
@@ -177,6 +178,9 @@ export function StatusBar({ project }: StatusBarProps): React.JSX.Element {
       {/* Right side */}
       <div className="flex items-center gap-0.5 shrink-0">
         {project && !isMobileWebShell && <NeedsYouPill projectId={project.id} />}
+
+        {/* Whether Roblox Studio is reachable, for the Roblox project only. */}
+        <RobloxStudioIndicator project={project} />
 
         {/* Story 10 (F1): global web connection health (control + terminal
             channels). Renders null on Tauri desktop. */}

@@ -1,11 +1,20 @@
-//! Locating Roblox's official `StudioMCP.exe` on this machine.
+//! Locating Roblox's official `StudioMCP.exe` on this machine, and reporting
+//! whether Studio is connected.
 //!
 //! The path lives under a per-install version directory
 //! (`%LOCALAPPDATA%\Roblox\Versions\version-<hash>\StudioMCP.exe`), and that hash
 //! changes on every Studio update. Callers must therefore resolve it each time
 //! they need it instead of storing the path once.
+//!
+//! Submodules: [`process`] answers "is Studio running?" cheaply, [`session`]
+//! keeps one MCP child alive across polls, and [`live_status`] composes them
+//! into the command the status bar reads.
 
 use std::path::PathBuf;
+
+pub mod live_status;
+pub mod process;
+pub mod session;
 
 /// Environment override, mirroring the Node bridge's `STUDIO_MCP_EXE`.
 pub const STUDIO_MCP_EXE_ENV: &str = "STUDIO_MCP_EXE";
@@ -153,146 +162,5 @@ fn home_dir() -> Option<PathBuf> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn temp_dir(tag: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("termul-roblox-{tag}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).expect("create temp dir");
-        dir
-    }
-
-    #[test]
-    fn override_wins_when_it_exists() {
-        let dir = temp_dir("override");
-        let exe = dir.join("StudioMCP.exe");
-        std::fs::write(&exe, b"stub").expect("write stub");
-
-        let found = find_studio_mcp_in(Some(exe.clone()), None);
-
-        assert_eq!(found, Some(exe));
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn override_that_does_not_exist_falls_back_to_the_scan() {
-        let root = temp_dir("fallback");
-        let version_dir = root.join("Roblox").join("Versions").join("version-abc");
-        std::fs::create_dir_all(&version_dir).expect("mkdir version");
-        let exe = version_dir.join("StudioMCP.exe");
-        std::fs::write(&exe, b"stub").expect("write stub");
-
-        let found = find_studio_mcp_in(Some(root.join("missing.exe")), Some(root.clone()));
-
-        assert_eq!(found, Some(exe));
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
-    #[test]
-    fn no_local_app_data_is_none() {
-        assert_eq!(find_studio_mcp_in(None, None), None);
-    }
-
-    #[test]
-    fn version_dir_without_the_exe_is_none() {
-        let root = temp_dir("empty");
-        std::fs::create_dir_all(root.join("Roblox").join("Versions").join("version-abc"))
-            .expect("mkdir version");
-
-        assert_eq!(find_studio_mcp_in(None, Some(root.clone())), None);
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
-    #[test]
-    fn empty_override_is_ignored() {
-        let root = temp_dir("empty-override");
-        let version_dir = root.join("Roblox").join("Versions").join("version-abc");
-        std::fs::create_dir_all(&version_dir).expect("mkdir version");
-        let exe = version_dir.join("StudioMCP.exe");
-        std::fs::write(&exe, b"stub").expect("write stub");
-
-        let found = find_studio_mcp_in(Some(PathBuf::new()), Some(root.clone()));
-
-        assert_eq!(found, Some(exe));
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
-    #[test]
-    fn workspace_prefers_documents_then_local_app_data() {
-        let home = PathBuf::from("C:/Users/someone");
-        let local = PathBuf::from("C:/Users/someone/AppData/Local");
-
-        let candidates = workspace_candidates_in(Some(home), Some(local));
-
-        assert_eq!(
-            candidates,
-            vec![
-                PathBuf::from("C:/Users/someone/Documents/RobloxKit"),
-                PathBuf::from("C:/Users/someone/AppData/Local/RobloxKit"),
-            ]
-        );
-    }
-
-    #[test]
-    fn workspace_without_home_uses_local_app_data_only() {
-        let candidates =
-            workspace_candidates_in(None, Some(PathBuf::from("C:/Users/someone/AppData/Local")));
-
-        assert_eq!(
-            candidates,
-            vec![PathBuf::from("C:/Users/someone/AppData/Local/RobloxKit")]
-        );
-    }
-
-    #[test]
-    fn workspace_with_no_roots_has_no_candidates() {
-        assert!(workspace_candidates_in(None, None).is_empty());
-        assert!(workspace_candidates_in(Some(PathBuf::new()), Some(PathBuf::new())).is_empty());
-    }
-
-    #[test]
-    fn workspace_is_created_under_documents() {
-        let home = temp_dir("home");
-        let local = temp_dir("local");
-
-        let resolved = resolve_workspace_in(Some(home.clone()), Some(local.clone()));
-
-        assert_eq!(resolved, Some(home.join("Documents").join(WORKSPACE_DIR_NAME)));
-        assert!(home.join("Documents").join(WORKSPACE_DIR_NAME).is_dir());
-        let _ = std::fs::remove_dir_all(&home);
-        let _ = std::fs::remove_dir_all(&local);
-    }
-
-    #[test]
-    fn workspace_falls_back_to_local_app_data_when_documents_is_blocked() {
-        let home = temp_dir("blocked-home");
-        let local = temp_dir("blocked-local");
-        std::fs::write(home.join("Documents"), b"not a directory").expect("block Documents");
-
-        let resolved = resolve_workspace_in(Some(home.clone()), Some(local.clone()));
-
-        assert_eq!(resolved, Some(local.join(WORKSPACE_DIR_NAME)));
-        assert!(local.join(WORKSPACE_DIR_NAME).is_dir());
-        let _ = std::fs::remove_dir_all(&home);
-        let _ = std::fs::remove_dir_all(&local);
-    }
-
-    #[test]
-    fn workspace_icon_is_written_once() {
-        let dir = temp_dir("icon");
-
-        write_workspace_icon(&dir);
-        let written = std::fs::read_to_string(dir.join("icon.svg")).expect("icon written");
-        assert!(written.contains("41.2648,12.6719"));
-
-        std::fs::write(dir.join("icon.svg"), "user icon").expect("overwrite");
-        write_workspace_icon(&dir);
-        assert_eq!(
-            std::fs::read_to_string(dir.join("icon.svg")).expect("read"),
-            "user icon"
-        );
-
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-}
+#[path = "roblox_tests.rs"]
+mod tests;

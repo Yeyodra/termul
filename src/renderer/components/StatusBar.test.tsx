@@ -59,6 +59,15 @@ vi.mock('@/hooks/use-agent-chat-attention', () => ({
   useAgentChatProjectSignals: () => signalsRef.current
 }))
 
+// The Roblox lamp polls the host; keep the bar's tests free of that traffic.
+const { robloxStatusRef } = vi.hoisted(() => ({
+  robloxStatusRef: { current: null as unknown }
+}))
+
+vi.mock('@/hooks/use-roblox-studio-status', () => ({
+  useRobloxStudioStatus: () => robloxStatusRef.current
+}))
+
 // Mock the terminal store
 vi.mock('@/stores/terminal-store', () => ({
   useActiveTerminal: vi.fn(() => ({
@@ -175,6 +184,7 @@ beforeEach(() => {
   updateTerminalGitBranchMock.mockClear()
   pickerProps.current = null
   terminalRef.current = {}
+  robloxStatusRef.current = null
   vi.stubGlobal('api', mockApi)
   // Reset store to defaults before each test
   useContextBarSettingsStore.setState({
@@ -604,6 +614,51 @@ describe('StatusBar', () => {
     it('is absent without a project', () => {
       renderWithProviders(<StatusBar project={undefined} />)
       expect(screen.queryByRole('button', { name: /Open terminal at/ })).toBeNull()
+    })
+  })
+
+  describe('roblox studio indicator', () => {
+    const robloxProject: Project = {
+      id: 'roblox',
+      name: 'Roblox',
+      path: '/home/user/Documents/RobloxKit',
+      color: 'blue'
+    }
+
+    it('is absent for a project that is not the Roblox project', () => {
+      robloxStatusRef.current = {
+        installed: true,
+        running: true,
+        connected: true,
+        placeName: 'Place A'
+      }
+      renderWithProviders(<StatusBar project={mockProject} />)
+
+      expect(screen.queryByText('Place A')).toBeNull()
+    })
+
+    it('is absent on a machine without Studio', () => {
+      robloxStatusRef.current = {
+        installed: false,
+        running: false,
+        connected: false,
+        placeName: null
+      }
+      renderWithProviders(<StatusBar project={robloxProject} />)
+
+      expect(screen.queryByLabelText(/Roblox Studio/)).toBeNull()
+    })
+
+    it('shows the place name for the Roblox project', () => {
+      robloxStatusRef.current = {
+        installed: true,
+        running: true,
+        connected: true,
+        placeName: 'Untitled Experience (placeId: 93291914711483)'
+      }
+      renderWithProviders(<StatusBar project={robloxProject} />)
+
+      expect(screen.getByText('Untitled Experience (placeId: 93291914711483)')).toBeInTheDocument()
     })
   })
 })

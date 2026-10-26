@@ -306,6 +306,10 @@ windows-sys = { version = "0.59", features = [
     "Win32_System_IO",
     "Win32_System_Ioctl",
     "Win32_System_SystemServices",
+    # Process-name enumeration for the Roblox Studio status lamp
+    # (roblox::process): a Toolhelp32 snapshot answers "is RobloxStudioBeta
+    # running?" in ~1 ms without spawning `tasklist`.
+    "Win32_System_Diagnostics_ToolHelp",
 ] }
 winapi = { version = "0.3", features = [
     "jobapi2",
