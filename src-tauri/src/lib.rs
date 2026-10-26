@@ -28,6 +28,7 @@ mod process_util;
 mod project_icon;
 mod pty;
 mod remote;
+mod roblox;
 mod secure_storage;
 // Opt-in `termul-server` self-update subsystem. The library module itself is
 // intentionally NOT feature-gated so its full test suite — including signature
@@ -1919,6 +1920,8 @@ pub fn run() {
             detect_shells,
             get_default_shell,
             get_home_directory,
+            roblox::roblox_studio_path,
+            roblox::roblox_workspace_path,
             window_visibility::is_wayland_session,
             suspend_app_menu,
             restore_app_menu,

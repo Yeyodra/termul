@@ -1,4 +1,4 @@
-import { Edit2, Search } from '@/components/icons'
+import { Edit2, Roblox, Search } from '@/components/icons'
 import { ProjectSidebar } from '@/components/ProjectSidebar'
 import { RailFooter } from '@/components/shell/RailFooter'
 import { RailHeader } from '@/components/shell/RailHeader'
@@ -18,6 +18,8 @@ interface RailExpandedProps {
   onOpenCommandPalette: () => void
   onOpenCanvas: () => void
   canOpenCanvas: boolean
+  onOpenRoblox: () => void
+  canOpenRoblox: boolean
   isShortcutsOpen: boolean
   onShortcutsOpenChange: (open: boolean) => void
   isThemePickerOpen: boolean
@@ -43,6 +45,8 @@ export function RailExpanded({
   onOpenCommandPalette,
   onOpenCanvas,
   canOpenCanvas,
+  onOpenRoblox,
+  canOpenRoblox,
   isShortcutsOpen,
   onShortcutsOpenChange,
   isThemePickerOpen,
@@ -70,6 +74,14 @@ export function RailExpanded({
           icon={<Edit2 size={16} />}
           disabled={!canOpenCanvas}
           onClick={onOpenCanvas}
+        />
+        <RailRow
+          label="Roblox"
+          name="Open Roblox"
+          hint={canOpenRoblox ? undefined : NEED_PROJECT}
+          icon={<Roblox size={16} className="text-foreground/80" />}
+          disabled={!canOpenRoblox}
+          onClick={onOpenRoblox}
         />
       </div>
 

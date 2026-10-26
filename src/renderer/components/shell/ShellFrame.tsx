@@ -40,6 +40,7 @@ export interface ShellFrameProps {
   handleToggleThemePicker: () => void
   handleOpenAgentChat: () => void
   handleOpenCanvas: () => void
+  handleOpenRoblox: () => void
   /** The `workspaceMain` element, rendered inside the main card. */
   workspaceMain: ReactNode
   /** The `appModals` element, rendered after the shell. */
@@ -118,6 +119,7 @@ export function ShellFrame({
   onSelectProject,
   handleToggleThemePicker,
   handleOpenCanvas,
+  handleOpenRoblox,
   workspaceMain,
   appModals
 }: ShellFrameProps): React.JSX.Element {
@@ -169,6 +171,8 @@ export function ShellFrame({
             onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
             onOpenCanvas={handleOpenCanvas}
             canOpenCanvas={Boolean(activeProject?.path)}
+            onOpenRoblox={handleOpenRoblox}
+            canOpenRoblox
             isShortcutsOpen={isShortcutMenuOpen}
             onShortcutsOpenChange={setIsShortcutMenuOpen}
             isThemePickerOpen={isThemePickerOpen}

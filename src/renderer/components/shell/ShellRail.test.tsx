@@ -79,6 +79,8 @@ function buildProps(overrides: Partial<ShellRailProps> = {}): ShellRailProps {
     onOpenCommandPalette: vi.fn(),
     onOpenCanvas: vi.fn(),
     canOpenCanvas: true,
+    onOpenRoblox: vi.fn(),
+    canOpenRoblox: true,
     isShortcutsOpen: false,
     onShortcutsOpenChange: vi.fn(),
     isThemePickerOpen: false,
@@ -200,6 +202,33 @@ describe('ShellRail', () => {
       fireEvent.focus(canvas.parentElement as HTMLElement)
       const tooltip = await screen.findByRole('tooltip')
       expect(tooltip).toHaveTextContent('Open a project first')
+    })
+
+    it('opens Roblox from its row, directly below Canvas', () => {
+      const { props } = renderRail()
+
+      const roblox = screen.getByRole('button', { name: 'Open Roblox' })
+      const canvas = screen.getByRole('button', { name: 'Open canvas' })
+      expect(canvas.compareDocumentPosition(roblox) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+
+      fireEvent.click(roblox)
+      expect(props.onOpenRoblox).toHaveBeenCalledTimes(1)
+    })
+
+    it('keeps Roblox clickable with no project open', () => {
+      const { props } = renderRail({ activeProject: undefined, activeProjectId: '' })
+
+      const roblox = screen.getByRole('button', { name: 'Open Roblox' })
+      expect(roblox).not.toBeDisabled()
+
+      fireEvent.click(roblox)
+      expect(props.onOpenRoblox).toHaveBeenCalledTimes(1)
+    })
+
+    it('keeps the Projects section visible so new projects stay reachable', () => {
+      renderRail()
+
+      expect(screen.getByText('Projects')).toBeInTheDocument()
     })
 
     it('opens Settings from the footer row, with the resolved shortcut in its tooltip', async () => {
@@ -433,6 +462,7 @@ describe('ShellRail', () => {
         'Changes',
         'Search',
         'Open canvas',
+        'Open Roblox',
         'SSH hosts',
         // Pinned at the bottom; Settings then Report a bug, the same
         // relative pair order as the expanded footer.

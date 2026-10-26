@@ -344,6 +344,37 @@ export const Square = forwardRef<SVGSVGElement, TermulIconProps>(function Square
   )
 })
 
+// Roblox logo is a Roblox Corporation trademark: replace before publishing.
+export const Roblox = forwardRef<SVGSVGElement, TermulIconProps>(function Roblox(
+  { size = 24, strokeWidth, children: _children, ...props },
+  ref
+) {
+  const requestedStrokeWidth = Number(strokeWidth ?? 1.5)
+  const safeStrokeWidth = Number.isFinite(requestedStrokeWidth) ? requestedStrokeWidth : 1.5
+
+  return (
+    // biome-ignore lint/a11y/noSvgWithoutTitle: aria-hidden is set unless the caller passes aria-label
+    <svg
+      ref={ref}
+      aria-hidden={props['aria-label'] ? undefined : true}
+      focusable="false"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={safeStrokeWidth}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      viewBox="0 0 48 48"
+      width={size}
+      height={size}
+      data-termul-icon="Roblox"
+      {...props}
+    >
+      <path d="M41.2648,12.6719,14.7123,5.5572a1.666,1.666,0,0,0-2.04,1.178L5.5572,33.2877a1.666,1.666,0,0,0,1.178,2.04l26.5525,7.1147a1.666,1.666,0,0,0,2.04-1.178l7.1147-26.5525a1.666,1.666,0,0,0-1.178-2.04Z" />
+      <path d="M29.3193,20.51l-8.1808-2.192a.5133.5133,0,0,0-.6287.3629l-2.192,8.1808a.5133.5133,0,0,0,.3629.6287l8.1808,2.192a.5133.5133,0,0,0,.6287-.3629l2.192-8.1808A.5133.5133,0,0,0,29.3193,20.51Z" />
+    </svg>
+  )
+})
+
 export const ChevronDownIcon = ChevronDown
 export const Clock3 = Clock
 export const FilePen = FileEdit

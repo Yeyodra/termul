@@ -313,6 +313,7 @@ export default function WorkspaceLayout(): React.JSX.Element {
         handleToggleThemePicker={handleToggleThemePicker}
         handleOpenAgentChat={tabOpeners.handleOpenAgentChat}
         handleOpenCanvas={tabOpeners.handleOpenCanvas}
+        handleOpenRoblox={tabOpeners.handleOpenRoblox}
         workspaceMain={workspaceMain}
         appModals={appModals}
       />

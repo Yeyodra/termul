@@ -26,6 +26,10 @@ export interface ShellRailProps {
   onOpenCanvas: () => void
   /** Whether the canvas can be opened (the active project has a path). */
   canOpenCanvas: boolean
+  /** Opens a new Roblox agent chat. */
+  onOpenRoblox: () => void
+  /** Roblox needs no project: its chat runs from the resolved workspace. */
+  canOpenRoblox: boolean
   isShortcutsOpen: boolean
   onShortcutsOpenChange: (open: boolean) => void
   isThemePickerOpen: boolean
@@ -50,6 +54,8 @@ export function ShellRail({
   onOpenCommandPalette,
   onOpenCanvas,
   canOpenCanvas,
+  onOpenRoblox,
+  canOpenRoblox,
   isShortcutsOpen,
   onShortcutsOpenChange,
   isThemePickerOpen,
@@ -98,6 +104,8 @@ export function ShellRail({
               onOpenCommandPalette={onOpenCommandPalette}
               onOpenCanvas={onOpenCanvas}
               canOpenCanvas={canOpenCanvas}
+              onOpenRoblox={onOpenRoblox}
+              canOpenRoblox={canOpenRoblox}
               isShortcutsOpen={isShortcutsOpen}
               onShortcutsOpenChange={onShortcutsOpenChange}
               isThemePickerOpen={isThemePickerOpen}
@@ -112,6 +120,8 @@ export function ShellRail({
               onOpenCommandPalette={onOpenCommandPalette}
               onOpenCanvas={onOpenCanvas}
               canOpenCanvas={canOpenCanvas}
+              onOpenRoblox={onOpenRoblox}
+              canOpenRoblox={canOpenRoblox}
               onSSHConnect={onSSHConnect}
               onSelectSSHProfile={onSelectSSHProfile}
               activeSSHProfileId={activeSSHProfileId}

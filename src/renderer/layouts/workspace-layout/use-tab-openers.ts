@@ -8,10 +8,12 @@ import { launchAgentInPane } from '@/lib/agent-launch'
 import { BUILT_IN_AGENTS } from '@/lib/agents/agent-registry'
 import { newUserBrowserTabId } from '@/lib/browser-api'
 import { openProjectCanvas } from '@/lib/open-project-canvas'
+import { ensureRobloxProject, ensureRobloxStudioMcp } from '@/lib/roblox-studio-mcp'
 import { openTerminalFromProfile, spawnTerminalInPane } from '@/lib/terminal-spawn'
 import { getDefaultCwdForProject } from '@/lib/worktree-context'
 import { useDefaultShell } from '@/stores/app-settings-store'
 import { useBrowserSessionStore } from '@/stores/browser-session-store'
+import { useProjectStore } from '@/stores/project-store'
 import { useWorkspaceStore } from '@/stores/workspace-store'
 import type { Project } from '@/types/project'
 import type { TerminalProfile } from '@/types/settings'
@@ -171,6 +173,28 @@ export function useTabOpeners({
     }
   }, [activeProject?.path, pathname, navigate])
 
+  const handleOpenRoblox = useCallback(() => {
+    const open = async (): Promise<void> => {
+      const resolved = await ensureRobloxStudioMcp()
+      if (!resolved) return
+      const project = await ensureRobloxProject()
+      if (!project) return
+      useProjectStore.getState().selectProject(project.id)
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+      const paneId = useWorkspaceStore.getState().activePaneId
+      if (!paneId) return
+      useWorkspaceStore.getState().showAgentLauncher(paneId)
+    }
+    // The launcher overlay only renders on the workspace route; navigate there
+    // first when invoked from a child route (e.g. preferences/settings).
+    if (pathname !== '/') {
+      navigate('/')
+      requestAnimationFrame(() => void open())
+    } else {
+      void open()
+    }
+  }, [pathname, navigate])
+
   const handleAddGitTab = useCallback(
     (paneId?: string) => {
       const resolvedPaneId = paneId ?? useWorkspaceStore.getState().activePaneId
@@ -234,6 +258,7 @@ export function useTabOpeners({
 
   return {
     handleOpenCanvas,
+    handleOpenRoblox,
     handleCreateTerminalInPane,
     handleLaunchAgent,
     handleAddTerminal,

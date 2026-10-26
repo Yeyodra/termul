@@ -1,4 +1,4 @@
-import { Bug, Edit2, Search, SlidersHorizontal } from '@/components/icons'
+import { Bug, Edit2, Roblox, Search, SlidersHorizontal } from '@/components/icons'
 import { RailColumnIcons } from '@/components/shell/RailColumnIcons'
 import { RailUtilityButtons } from '@/components/shell/RailFooter'
 import { RailProjectStack } from '@/components/shell/RailProjectStack'
@@ -22,6 +22,8 @@ interface RailCollapsedProps {
   onOpenCommandPalette: () => void
   onOpenCanvas: () => void
   canOpenCanvas: boolean
+  onOpenRoblox: () => void
+  canOpenRoblox: boolean
   onSSHConnect: (profileId: string) => void
   onSelectSSHProfile: (profileId: string) => void
   activeSSHProfileId: string | null
@@ -119,6 +121,8 @@ export function RailCollapsed({
   onOpenCommandPalette,
   onOpenCanvas,
   canOpenCanvas,
+  onOpenRoblox,
+  canOpenRoblox,
   onSSHConnect,
   onSelectSSHProfile,
   activeSSHProfileId,
@@ -185,6 +189,16 @@ export function RailCollapsed({
             onClick={onOpenCanvas}
           >
             <Edit2 size={16} />
+          </RailButton>
+
+          <RailButton
+            label="Open Roblox"
+            hint={canOpenRoblox ? undefined : NEED_PROJECT}
+            aria-label="Open Roblox"
+            disabled={!canOpenRoblox}
+            onClick={onOpenRoblox}
+          >
+            <Roblox size={16} className="text-foreground/80" />
           </RailButton>
 
           {/* Desktop only: renders nothing on web. */}
