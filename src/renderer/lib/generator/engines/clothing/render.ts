@@ -1,22 +1,39 @@
 /**
- * Design JSON -> RGBA buffer -> PNG, plus the visual check that gates `DONE`.
+ * Design JSON -> canvas, and the two-pass compositor that draws every layer kind.
  *
- * Ported from `render-CpljO1Hx.js:198-349`. Two behaviours are reproduced
- * deliberately because they are visible:
+ * Ported 1:1 from RobloxKit's `renderToCanvas` (`render-CpljO1Hx.js`,
+ * `render:231-349`). The structure is the whole point:
  *
- *  - consecutive pattern layers render into one **transparent** batch buffer, so
- *    a pattern with `opacity < 1` darkens toward black before compositing
- *    (`render:231-349`)
- *  - pattern coordinates are region-local, so every region restarts the pattern
- *    at its own corner
+ *  1. `clearRect` the sheet (transparent)
+ *  2. `fillRect` the `background`, if any, as an opaque hex string
+ *  3. walk the layers bottom-to-top
+ *     - `hidden` is skipped entirely
+ *     - a **pattern** kind joins a pending batch
+ *     - a **vector** kind flushes the batch first, then draws clipped per region
+ *  4. flush whatever batch is left
  *
- * Only the pattern batch runs here. Vector layers (text/image/shape/trim) need a
- * 2D canvas and are out of scope for the headless path.
+ * ## Why the batch exists, and the artifact it carries
+ *
+ * A run of consecutive pattern layers is rasterised as *one* buffer by
+ * `renderPixels({...design, background: null, layers: batch})` — so it starts
+ * from transparent black, not from the canvas' current contents — then
+ * `putImageData` into a scratch canvas and `drawImage`d with `source-over`.
+ *
+ * The consequence is a real double-darkening: a 50% red pattern over white
+ * yields roughly `(191,128,128)`, not `(255,128,128)`, because the pattern's own
+ * `opacity` blends it toward transparent black inside the batch first.
+ *
+ * That is an upstream artifact, reproduced deliberately. If it is ever fixed,
+ * fix it as a labelled divergence, not silently.
+ *
+ * The `renderPixels` half is still pure and deterministic, which is what the
+ * pattern tests assert on; only the vector half needs a canvas.
  */
 
 import { type Region, regionsFor, resolveTarget, SHEET_DIMENSIONS } from './layout'
 import { patternField, type Rgb } from './pattern'
 import type { ClothingDesign, ClothingLayer, DesignType } from './schema'
+import { drawVectorLayer, type ImageLoader, isVectorKind, type LayerTarget } from './vector'
 
 /** A rasterised design, ready to encode. */
 export interface RenderedSheet {
@@ -26,29 +43,32 @@ export interface RenderedSheet {
   pixels: Uint8ClampedArray
 }
 
-const isPattern = (kind: string): boolean =>
-  kind !== 'text' && kind !== 'image' && kind !== 'shape' && kind !== 'trim'
-
-function clampOpacity(value: unknown): number {
-  return Math.min(1, Math.max(0, Number(value ?? 1)))
+/** The 2D context operations the compositor needs beyond drawing layers. */
+export interface CompositorTarget extends LayerTarget {
+  clearRect(x: number, y: number, w: number, h: number): void
+  createImageData(width: number, height: number): ImageData
+  putImageData(data: ImageData, x: number, y: number): void
+  getImageData(x: number, y: number, w: number, h: number): ImageData
 }
 
-/** Composite `src` over `dst` in place, both premultiplied-by-alpha source-over. */
-function blendOver(dst: Uint8ClampedArray, src: Uint8ClampedArray, opacity: number): void {
-  for (let i = 0; i < dst.length; i += 4) {
-    const sa = (src[i + 3] / 255) * opacity
-    if (sa <= 0) continue
-    const da = dst[i + 3] / 255
-    const outA = sa + da * (1 - sa)
-    if (outA <= 0) continue
-    for (let c = 0; c < 3; c += 1) {
-      dst[i + c] = Math.round((src[i + c] * sa + dst[i + c] * da * (1 - sa)) / outA)
-    }
-    dst[i + 3] = Math.round(outA * 255)
-  }
+/** A canvas the compositor can draw into. */
+export interface SheetCanvas {
+  width: number
+  height: number
+  getContext(kind: '2d'): CompositorTarget | null
+  toDataURL(type?: string): string
 }
 
-/** Fill one region with a pattern layer, writing straight into `pixels`. */
+const isPattern = (kind: string): boolean => !isVectorKind(kind)
+
+/**
+ * Composite one pattern layer into `pixels` over `region`.
+ *
+ * Upstream's `opacity` handling, reproduced exactly (`render:135-151`): below 1
+ * it lerps each channel toward the layer colour and takes `max(oldAlpha,
+ * round(opacity*255))` — a **max**, not source-over accumulation, which is why
+ * two half-opaque layers do not compound to 75%.
+ */
 function paintPatternRegion(
   pixels: Uint8ClampedArray,
   width: number,
@@ -56,33 +76,35 @@ function paintPatternRegion(
   layer: ClothingLayer
 ): void {
   const field = patternField(layer, region.w, region.h)
-  const opacity = clampOpacity(layer.opacity)
+  const opacity = Math.min(1, Math.max(0, Number(layer.opacity ?? 1)))
+  const alpha = Math.round(opacity * 255)
 
   for (let y = 0; y < region.h; y += 1) {
     for (let x = 0; x < region.w; x += 1) {
       const [r, g, b] = field(x, y) as Rgb
       const offset = ((region.y + y) * width + (region.x + x)) * 4
+
       if (opacity >= 1) {
         pixels[offset] = r
         pixels[offset + 1] = g
         pixels[offset + 2] = b
         pixels[offset + 3] = 255
-      } else {
-        const src = Uint8ClampedArray.of(r, g, b, 255)
-        const dst = pixels.slice(offset, offset + 4)
-        const merged = Uint8ClampedArray.from(dst)
-        blendOver(merged, src, opacity)
-        pixels.set(merged, offset)
+        continue
       }
+
+      pixels[offset] = Math.round(pixels[offset] * (1 - opacity) + r * opacity)
+      pixels[offset + 1] = Math.round(pixels[offset + 1] * (1 - opacity) + g * opacity)
+      pixels[offset + 2] = Math.round(pixels[offset + 2] * (1 - opacity) + b * opacity)
+      pixels[offset + 3] = Math.max(pixels[offset + 3], alpha)
     }
   }
 }
 
 /**
- * Render a design to an RGBA buffer.
+ * Render the pattern layers of `design` to an RGBA buffer.
  *
- * Vector layers are skipped; a design with only vector layers yields the
- * background, which the validator already treats as valid.
+ * `background` is honoured, so this stays useful on its own; the compositor
+ * calls it with `background: null` for each batch.
  */
 export function renderPixels(design: ClothingDesign): RenderedSheet {
   const { width, height } = SHEET_DIMENSIONS[design.type]
@@ -90,7 +112,9 @@ export function renderPixels(design: ClothingDesign): RenderedSheet {
 
   if (design.background) {
     const hex = Number.parseInt(String(design.background).replace('#', ''), 16)
-    const [r, g, b] = [(hex >> 16) & 255, (hex >> 8) & 255, hex & 255]
+    const r = (hex >> 16) & 255
+    const g = (hex >> 8) & 255
+    const b = hex & 255
     for (let i = 0; i < pixels.length; i += 4) {
       pixels[i] = r
       pixels[i + 1] = g
@@ -107,6 +131,73 @@ export function renderPixels(design: ClothingDesign): RenderedSheet {
   }
 
   return { width, height, pixels }
+}
+
+// Per-flush, not shared: the scratch canvas is resized to the sheet, so two
+// concurrent sheets would clobber each other's pixels.
+function blit(ctx: CompositorTarget, sheet: RenderedSheet): void {
+  const scratch = document.createElement('canvas')
+  scratch.width = sheet.width
+  scratch.height = sheet.height
+
+  const scratchCtx = scratch.getContext('2d')
+  if (!scratchCtx) throw new Error('a 2D canvas is unavailable, so a pattern batch cannot be drawn')
+
+  const image = scratchCtx.createImageData(sheet.width, sheet.height)
+  image.data.set(sheet.pixels)
+  scratchCtx.putImageData(image, 0, 0)
+  ctx.drawImage(scratch, 0, 0)
+}
+
+/**
+ * Draw `design` into `canvas`, returning the same canvas.
+ *
+ * `loadImage` is only consulted for `image` layers. Pass a loader that throws
+ * when pictures are unavailable so the failure surfaces instead of the layer
+ * vanishing.
+ */
+export async function renderToCanvas(
+  design: ClothingDesign,
+  canvas: SheetCanvas,
+  loadImage: ImageLoader
+): Promise<SheetCanvas> {
+  const { width, height } = SHEET_DIMENSIONS[design.type]
+  canvas.width = width
+  canvas.height = height
+
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('a 2D canvas is unavailable, so the sheet cannot be drawn')
+
+  ctx.clearRect(0, 0, width, height)
+
+  let batch: ClothingLayer[] = []
+  const flush = (): void => {
+    if (!batch.length) return
+    blit(ctx, renderPixels({ ...design, background: null, layers: batch }))
+    batch = []
+  }
+
+  if (design.background) {
+    ctx.fillStyle = design.background
+    ctx.fillRect(0, 0, width, height)
+  }
+
+  for (const layer of design.layers ?? []) {
+    if (layer.hidden) continue
+
+    if (isPattern(layer.kind)) {
+      batch.push(layer)
+      continue
+    }
+
+    // A vector layer must land above every pattern beneath it, so the pending
+    // batch has to reach the canvas first.
+    flush()
+    await drawVectorLayer(ctx, resolveTarget(design.type, layer.target ?? 'all'), layer, loadImage)
+  }
+
+  flush()
+  return canvas
 }
 
 /** How much of the sheet ended up painted, 0..1. */

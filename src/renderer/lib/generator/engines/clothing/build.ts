@@ -6,19 +6,18 @@
  * is invalid. That throw is the whole self-correction mechanism — the loop
  * echoes those strings back to the model and re-asks.
  *
- * Nothing here talks to a model or a canvas element: `renderPixels` is pure, so
- * the same design always yields the same bytes.
+ * The render is async because an `image` layer draws from a picture that has to
+ * be decoded first, exactly as RobloxKit's `renderToCanvas` awaits its `Image`.
  */
 
 import type { BuildResult } from '../../types'
-import { coverage, distinctColors, regionSummary, renderPixels, sheetSize } from './render'
-import {
-  type ClothingDesign,
-  type DesignType,
-  LIMITS,
-  normalizeDesign,
-  validateDesign
-} from './schema'
+import { checkDesign } from './check'
+import { SHEET_DIMENSIONS } from './layout'
+import { pngDataUrl } from './png'
+import { renderToCanvas, type SheetCanvas } from './render'
+import { checkFacts, layerLayout } from './report'
+import { type ClothingDesign, type DesignType, normalizeDesign, validateDesign } from './schema'
+import type { ImageLoader } from './vector'
 
 /** A design that failed validation, in the shape the loop expects. */
 export class DesignRejected extends Error {
@@ -31,66 +30,105 @@ export class DesignRejected extends Error {
   }
 }
 
-/** Flat-colour designs are legal but rarely what the user asked for. */
-const MIN_DISTINCT_COLORS = 2
-const MIN_COVERAGE = 0.05
+/** A design whose pictures cannot be decoded. */
+export class ImageUnavailable extends Error {
+  readonly problems: string[]
+
+  constructor(message: string) {
+    super(message)
+    this.name = 'ImageUnavailable'
+    this.problems = [message]
+  }
+}
 
 export interface ClothingBuildOptions {
   /** Decided by the tool call, never by the model. */
   type: DesignType
-  /** Attached pictures, for image-layer index validation. */
-  images?: number
+  /** Attached pictures, for image-layer index validation and `src` resolution. */
+  images?: string[]
+  /** Overrides the canvas, for tests. */
+  canvas?: SheetCanvas
+  /** Overrides image decoding, for tests. */
+  loadImage?: ImageLoader
+}
+
+/** Decode a data URL through an `Image`, as upstream's cached loader does. */
+function defaultImageLoader(src: string): Promise<CanvasImageSource> {
+  return new Promise((resolve, reject) => {
+    const image = new Image()
+    image.onload = () => resolve(image)
+    image.onerror = () => reject(new Error('could not read that image'))
+    image.src = src
+  })
 }
 
 /**
- * Validate, render, and describe the result.
- *
- * The `report.issues` entries are non-fatal warnings: the loop only rejects a
- * `DONE` on `level: 'error'`, so a flat design surfaces in `facts` without
- * blocking acceptance.
+ * Resolve `image: n` into `src`, upstream's only design normalisation
+ * (`design-PKArvEjc.js`, `function d`).
  */
-export function buildClothing(
-  spec: unknown,
-  { type, images = 0 }: ClothingBuildOptions
-): BuildResult {
-  const normalized = normalizeDesign(spec as ClothingDesign, type)
-  const problems = validateDesign(normalized, { images })
-  if (problems.length) throw new DesignRejected(problems)
-
-  const rendered = renderPixels(normalized)
-  const size = sheetSize(type)
-  const painted = coverage(rendered)
-  const colors = distinctColors(rendered)
-
-  const issues: Array<{ level: 'error' | 'warn'; message: string }> = []
-  if (painted < MIN_COVERAGE) {
-    issues.push({
-      level: 'warn',
-      message: `the design covers only ${(painted * 100).toFixed(1)}% of the sheet`
+function attachImages(design: ClothingDesign, images: string[]): ClothingDesign {
+  return {
+    ...design,
+    layers: (design.layers ?? []).map((layer, index) => {
+      const base = { id: layer.id ?? `l${index}`, target: 'all', ...layer }
+      if (layer.kind === 'image' && layer.image != null && images[layer.image]) {
+        return { ...base, src: images[layer.image] }
+      }
+      return base
     })
   }
-  if (colors < MIN_DISTINCT_COLORS) {
-    issues.push({ level: 'warn', message: 'the design is a single flat colour' })
+}
+
+/** A blank canvas of the requested size. */
+function createCanvas(width: number, height: number): SheetCanvas {
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  return canvas
+}
+
+/**
+ * Validate, render, check, and describe the result.
+ *
+ * `report.ok` gates `DONE` acceptance, and `layout` is the per-layer inventory
+ * the model reads when deciding whether to keep the design.
+ */
+export async function buildClothing(
+  spec: unknown,
+  { type, images = [], canvas, loadImage = defaultImageLoader }: ClothingBuildOptions
+): Promise<BuildResult> {
+  const normalized = attachImages(normalizeDesign(spec as ClothingDesign, type), images)
+
+  const problems = validateDesign(normalized, { images: images.length })
+  if (problems.length) throw new DesignRejected(problems)
+
+  const size = SHEET_DIMENSIONS[type]
+  const sheet = canvas ?? createCanvas(size.width, size.height)
+
+  let drawn: SheetCanvas
+  try {
+    drawn = await renderToCanvas(normalized, sheet, loadImage)
+  } catch (error) {
+    throw new ImageUnavailable(error instanceof Error ? error.message : String(error))
   }
-  if ((normalized.layers?.length ?? 0) >= LIMITS.layers) {
-    issues.push({ level: 'warn', message: `the design is at the ${LIMITS.layers}-layer limit` })
-  }
+
+  const ctx = drawn.getContext('2d')
+  if (!ctx) throw new Error('a 2D canvas is unavailable, so the sheet cannot be read back')
+
+  const pixels = ctx.getImageData(0, 0, drawn.width, drawn.height).data
+  const check = checkDesign(normalized, pixels, drawn.width, drawn.height)
 
   return {
     spec: normalized,
+    sheet: pngDataUrl(drawn),
     report: {
-      ok: issues.every((issue) => issue.level !== 'error'),
-      issues,
-      width: size.width,
-      height: size.height,
-      coverage: Number(painted.toFixed(4)),
-      colors
+      ok: check.ok,
+      issues: check.issues,
+      width: drawn.width,
+      height: drawn.height,
+      size: check.size,
+      empty: check.empty
     },
-    layout: [
-      `Sheet ${size.width}x${size.height}, garment ${type}.`,
-      `${normalized.layers?.length ?? 0} layer(s).`,
-      `Painted ${(painted * 100).toFixed(1)}% with ${colors} distinct colour(s).`,
-      `Regions: ${regionSummary(type)}.`
-    ].join(' ')
+    layout: layerLayout(normalized, check) + '\n' + checkFacts(check.issues)
   }
 }

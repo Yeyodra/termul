@@ -128,12 +128,9 @@ describe('generate_clothing end to end', () => {
     expect(polled.status).toBe('done')
     expect(polled.summary).toContain('ready')
 
-    const outcome = polled.result as {
-      result: { type: string }
-      built: { report: { ok: boolean } }
-    }
-    expect(outcome.result.type).toBe('shirt')
-    expect(outcome.built.report.ok).toBe(true)
+    const outcome = polled as { design: { type: string }; report: { ok: boolean } }
+    expect(outcome.design.type).toBe('shirt')
+    expect(outcome.report.ok).toBe(true)
 
     expect(sent).toHaveLength(2)
     expect(sent[0].scope).toBe('gen/clothing')

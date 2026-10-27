@@ -1,4 +1,4 @@
-/**
+﻿/**
  * The clothing engine: validator wording, pattern math, and determinism.
  *
  * The validator strings are echoed to the model verbatim, and the renderer must
@@ -29,6 +29,13 @@ import {
 
 const solid = (overrides: Partial<ClothingLayer> = {}): ClothingLayer => ({
   kind: 'solid',
+  color: '#ff0000',
+  target: 'all',
+  ...overrides
+})
+
+const trim = (overrides: Partial<ClothingLayer> = {}): ClothingLayer => ({
+  kind: 'trim',
   color: '#ff0000',
   target: 'all',
   ...overrides
@@ -413,26 +420,25 @@ describe('renderPixels', () => {
 })
 
 describe('buildClothing', () => {
-  it('returns a report with dimensions and coverage', () => {
-    const built = buildClothing(design([solid()]), { type: 'shirt' })
+  it('returns a report with the sheet dimensions', async () => {
+    const built = await buildClothing(design([solid()]), { type: 'shirt' })
 
     expect(built.report.ok).toBe(true)
     expect(built.report.width).toBe(585)
     expect(built.report.height).toBe(559)
-    expect(built.report.coverage).toBeGreaterThan(0.4)
-    expect(built.layout).toContain('garment shirt')
+    expect(built.report.size).toEqual([585, 559])
   })
 
-  it('forces the garment type from the tool call, not the model', () => {
-    const built = buildClothing({ type: 'pants', layers: [solid()] }, { type: 'tshirt' })
+  it('forces the garment type from the tool call, not the model', async () => {
+    const built = await buildClothing({ type: 'pants', layers: [solid()] }, { type: 'tshirt' })
     expect((built.spec as ClothingDesign).type).toBe('tshirt')
     expect(built.report.width).toBe(512)
   })
 
-  it('throws DesignRejected carrying the problems', () => {
+  it('throws DesignRejected carrying the problems', async () => {
     let error: unknown
     try {
-      buildClothing(design([solid({ color: 'nope' })]), { type: 'shirt' })
+      await buildClothing(design([solid({ color: 'nope' })]), { type: 'shirt' })
     } catch (caught) {
       error = caught
     }
@@ -443,22 +449,45 @@ describe('buildClothing', () => {
     )
   })
 
-  it('warns about a flat single-colour design without failing it', () => {
-    const built = buildClothing(design([solid({ color: '#abcdef' })]), { type: 'shirt' })
+  it('names the regions a solid fill leaves bare', async () => {
+    const built = await buildClothing(design([solid({ target: 'torso' })]), { type: 'shirt' })
 
+    const issues = built.report.issues as Array<{ level: string; message: string }>
+    const empty = issues.find((issue) => issue.message.includes('left empty'))
+
+    expect(empty?.level).toBe('warn')
+    expect(empty?.message).toContain('right_arm')
     expect(built.report.ok).toBe(true)
-    expect(built.report.issues.some((issue) => issue.message.includes('flat colour'))).toBe(true)
   })
 
-  it('warns about a nearly empty sheet', () => {
-    const built = buildClothing(design([solid({ target: 'torso_up' })]), { type: 'shirt' })
-
-    expect(built.report.ok).toBe(true)
-    expect(built.report.issues.some((issue) => issue.message.includes('covers only'))).toBe(true)
+  it('does not report empty regions for a t-shirt', async () => {
+    const built = await buildClothing(design([solid()]), { type: 'tshirt' })
+    expect(built.report.empty).toEqual([])
   })
 
-  it('describes the regions in the layout string', () => {
-    const built = buildClothing(design([solid()]), { type: 'tshirt' })
-    expect(built.layout).toContain('graphic')
+  it('lists every layer in the layout, bottom to top', async () => {
+    const built = await buildClothing(
+      design([solid(), solid({ color: '#ffffff', target: 'torso_up' })]),
+      { type: 'shirt' }
+    )
+
+    expect(built.layout).toContain('Layers (bottom to top):')
+    expect(built.layout).toContain('0. solid on all #ff0000')
+    expect(built.layout).toContain('1. solid on torso_up #ffffff')
+  })
+
+  it('says every region is painted when the design covers the garment', async () => {
+    const built = await buildClothing(design([solid()]), { type: 'shirt' })
+    expect(built.layout).toContain('Every region is painted.')
+  })
+
+  it('draws a trim layer, which the pattern pass alone would drop', async () => {
+    const built = await buildClothing(
+      design([solid({ color: '#000000' }), trim({ color: '#ffffff', edge: 'all', width: 8 })]),
+      { type: 'shirt' }
+    )
+
+    expect(built.sheet).toMatch(/^data:image\/png;base64,/)
+    expect(built.layout).toContain('1. trim on all #ffffff')
   })
 })
