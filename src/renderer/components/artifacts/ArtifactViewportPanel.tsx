@@ -42,5 +42,5 @@ export function ArtifactViewportPanel(): React.JSX.Element {
 
 /** Whether the viewport tab should exist at all. */
 export function useHasArtifact(): boolean {
-  return useArtifactStore((state) => state.current !== null)
+  return useArtifactStore((state) => state.entries.length > 0)
 }

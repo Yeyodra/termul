@@ -1,10 +1,9 @@
 /**
- * Where the artifact viewport shows.
+ * Where the live artifact surface is drawn.
  *
- * A visible `ArtifactViewportPanel` registers its element here, and the global
- * layer lays the single WebGL surface over it — or parks it offscreen when no
- * tab is showing one. The surface itself never moves in the DOM, so switching
- * tabs does not rebuild the scene.
+ * A card registers its stage element here; the single global surface is laid
+ * over whichever one is registered. Registration is a callback ref, not an
+ * effect, because the element only exists once there is an artifact to show.
  */
 
 import { create } from 'zustand'
@@ -12,12 +11,12 @@ import { create } from 'zustand'
 interface ArtifactSlotState {
   slot: HTMLElement | null
   claimSlot: (element: HTMLElement) => void
-  /** Releases the slot only while `element` still holds it. */
-  releaseSlot: (element: HTMLElement) => void
+  releaseSlot: (element: HTMLElement | null) => void
 }
 
 export const useArtifactSlots = create<ArtifactSlotState>((set) => ({
   slot: null,
   claimSlot: (element) => set((state) => (state.slot === element ? {} : { slot: element })),
-  releaseSlot: (element) => set((state) => (state.slot === element ? { slot: null } : {}))
+  releaseSlot: (element) =>
+    set((state) => (element === null || state.slot === element ? { slot: null } : {}))
 }))

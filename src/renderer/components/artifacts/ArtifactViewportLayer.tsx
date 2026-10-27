@@ -14,16 +14,15 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useArtifactSlots } from '@/components/artifacts/artifact-slots'
-import { useOpenArtifactTab } from '@/components/artifacts/use-open-artifact-tab'
 import { ArtifactViewportPanel } from '@/lib/generator/viewport/ArtifactViewportPanel'
-import { useArtifactStore } from '@/stores/artifact-store'
+import { useLiveArtifact } from '@/stores/artifact-store'
 
 export function ArtifactViewportLayer(): React.JSX.Element | null {
-  const artifact = useArtifactStore((state) => state.current)
+  const entry = useLiveArtifact()
+  const artifact = entry?.artifact ?? null
   const slot = useArtifactSlots((state) => state.slot)
   const frameRef = useRef<HTMLDivElement | null>(null)
   const [rect, setRect] = useState<DOMRect | null>(null)
-  useOpenArtifactTab()
 
   useEffect(() => {
     if (!slot) {

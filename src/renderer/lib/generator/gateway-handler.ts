@@ -33,7 +33,7 @@ function publishClothingArtifact(result: GenerateClothingResult): void {
       atlas: result.atlas,
       name: result.name
     },
-    null
+    result.image
   )
 }
 

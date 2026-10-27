@@ -5,6 +5,7 @@ import {
   emptyPendingLauncherOptions,
   overlayPendingLauncherOptions
 } from '@/components/agents/pending-launcher-options'
+import { ChatArtifactStrip } from '@/components/artifacts/ChatArtifactStrip'
 import { BrowserAgentIndicator } from '@/components/browser/BrowserAgentStop'
 import { MODEL_CATEGORY } from '@/components/chat/chat-input-bar-config'
 import { SkillFilesProvider } from '@/components/chat/skill-file-links'
@@ -1016,6 +1017,7 @@ export function AgentChatPanel({
               </div>
             </div>
           )}
+          <ChatArtifactStrip />
           <ChatChangedFilesPanel
             cwd={session.cwd}
             toolCalls={toolCalls}

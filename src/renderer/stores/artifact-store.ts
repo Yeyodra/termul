@@ -1,35 +1,57 @@
 /**
- * The artifact the viewport is showing, kept outside the chat transcript.
+ * The artifacts this session has generated, newest first.
  *
- * A generated garment is megabytes of atlas; `acp-store` discards any tool
- * result field over 128 KiB (`transcript.ts:433`), so an artifact that travelled
- * through a message would arrive empty. It is published here instead, and the
- * message that announced it only carries a reference.
+ * Kept as a list rather than a single value so an earlier garment stays
+ * reachable after the next generation replaces it. Only one entry is *live* —
+ * there is one WebGL surface — and the rest show the still image the engine
+ * already produced, which is enough to recognise and reopen them.
  *
- * One artifact is current at a time, because there is one viewport: a second
- * generation replaces the first, which matches what the user sees.
+ * The artifact never travels through a message: `acp-store` discards any
+ * tool-result field over 128 KiB (`transcript.ts:433`) and an atlas is far
+ * larger, so publishing it there would arrive empty.
  */
 
 import { create } from 'zustand'
 import type { Artifact } from '@/lib/generator/viewport/artifact'
 
+export interface ArtifactEntry {
+  /** Stable id for React keys and for choosing which entry is live. */
+  id: string
+  artifact: Artifact
+  /** A still picture of the artifact, for the cards that are not live. */
+  still?: string
+  at: number
+}
+
 interface ArtifactState {
-  /** What the viewport is showing, or null before the first generation. */
-  current: Artifact | null
-  /** Which project produced it, so a project switch can clear it. */
-  projectId: string | null
-  /** True while the viewport panel is on screen. */
-  open: boolean
-  publish: (artifact: Artifact, projectId: string | null) => void
-  setOpen: (open: boolean) => void
+  entries: ArtifactEntry[]
+  /** Which entry the live surface is showing. */
+  liveId: string | null
+  publish: (artifact: Artifact, still?: string) => void
+  /** Make an earlier entry live again. */
+  focus: (id: string) => void
   clear: () => void
 }
 
-export const useArtifactStore = create<ArtifactState>((set) => ({
-  current: null,
-  projectId: null,
-  open: false,
-  publish: (artifact, projectId) => set({ current: artifact, projectId, open: true }),
-  setOpen: (open) => set({ open }),
-  clear: () => set({ current: null, projectId: null, open: false })
+export const useArtifactStore = create<ArtifactState>((set, get) => ({
+  entries: [],
+  liveId: null,
+  publish: (artifact, still) => {
+    const id = `artifact-${get().entries.length + 1}-${artifact.kind}`
+    set((state) => ({
+      entries: [{ id, artifact, still, at: Date.now() }, ...state.entries],
+      liveId: id
+    }))
+  },
+  focus: (id) => {
+    if (get().entries.some((entry) => entry.id === id)) set({ liveId: id })
+  },
+  clear: () => set({ entries: [], liveId: null })
 }))
+
+/** The entry the live surface is showing, falling back to the newest. */
+export function useLiveArtifact(): ArtifactEntry | null {
+  return useArtifactStore(
+    (state) => state.entries.find((entry) => entry.id === state.liveId) ?? state.entries[0] ?? null
+  )
+}
