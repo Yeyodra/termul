@@ -137,6 +137,7 @@ pub(super) async fn run_command_loop(
                 worktree_branch,
                 additional_directories,
                 command_id,
+                roblox_studio_eager_load,
                 reply,
             } => {
                 let slot = reply_slot(reply);
@@ -148,11 +149,17 @@ pub(super) async fn run_command_loop(
                 let req_state = driver_state.clone();
                 let req_persistence = persistence.clone();
                 spawn_request(&cx, slot, async move {
+                    // Resolved per request: Roblox moves `StudioMCP.exe` into a
+                    // new `version-<hash>` directory on every update. Inert
+                    // unless this session opted in.
+                    let roblox = RobloxEagerLoad::resolve(roblox_studio_eager_load);
+                    let (mcp_servers, meta) =
+                        shape_session_request(profile.summarize_thinking, &roblox, mcp_servers).await;
                     let mut request = NewSessionRequest::new(cwd.clone())
                         .mcp_servers(mcp_servers)
                         .additional_directories(additional_directories);
-                    if profile.summarize_thinking {
-                        request = request.meta(summarized_thinking_meta());
+                    if let Some(meta) = meta {
+                        request = request.meta(meta);
                     }
                     let timeout = session_new_timeout();
                     log::debug!(
@@ -295,6 +302,7 @@ pub(super) async fn run_command_loop(
                 cwd,
                 additional_directories,
                 mcp_servers,
+                roblox,
                 reply,
             } => {
                 let slot = reply_slot(reply);
@@ -380,11 +388,13 @@ pub(super) async fn run_command_loop(
                     // held indefinitely).
                     let mut request = LoadSessionRequest::new(&session_id, cwd.clone())
                         .additional_directories(additional_directories);
-                    if let Some(mcp_servers) = mcp_servers {
-                        request = request.mcp_servers(mcp_servers);
+                    let (servers, meta) =
+                        shape_session_request_opt(profile.summarize_thinking, &roblox, mcp_servers).await;
+                    if let Some(servers) = servers {
+                        request = request.mcp_servers(servers);
                     }
-                    if profile.summarize_thinking {
-                        request = request.meta(summarized_thinking_meta());
+                    if let Some(meta) = meta {
+                        request = request.meta(meta);
                     }
                     let result = run_session_reopen(
                         "session/load",
@@ -408,6 +418,7 @@ pub(super) async fn run_command_loop(
                 cwd,
                 additional_directories,
                 mcp_servers,
+                roblox,
                 reply,
             } => {
                 let slot = reply_slot(reply);
@@ -471,11 +482,13 @@ pub(super) async fn run_command_loop(
                     };
                     let mut request = ResumeSessionRequest::new(&session_id, cwd.clone())
                         .additional_directories(additional_directories);
-                    if let Some(mcp_servers) = mcp_servers {
-                        request = request.mcp_servers(mcp_servers);
+                    let (servers, meta) =
+                        shape_session_request_opt(profile.summarize_thinking, &roblox, mcp_servers).await;
+                    if let Some(servers) = servers {
+                        request = request.mcp_servers(servers);
                     }
-                    if profile.summarize_thinking {
-                        request = request.meta(summarized_thinking_meta());
+                    if let Some(meta) = meta {
+                        request = request.meta(meta);
                     }
                     let result = run_session_reopen(
                         "session/resume",

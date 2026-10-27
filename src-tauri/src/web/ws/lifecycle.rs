@@ -30,6 +30,7 @@ pub(super) async fn handle_resume_session(
     id: String,
     payload: &Value,
     acp: &Arc<AcpManager>,
+    registry: &Arc<ProjectRegistry>,
 ) -> WsReply {
     let parsed: LoadResumeSessionPayload = match serde_json::from_value(payload.clone()) {
         Ok(p) => p,
@@ -41,6 +42,12 @@ pub(super) async fn handle_resume_session(
             )
         }
     };
+    let project_id = registry.find_by_path(&parsed.cwd);
+    let roblox_studio_eager_load = wants_roblox_eager_load(
+        registry,
+        project_id.as_deref(),
+        parsed.mcp_servers.as_deref(),
+    );
     match acp
         .resume_session(
             &parsed.agent_id,
@@ -48,6 +55,7 @@ pub(super) async fn handle_resume_session(
             parsed.cwd,
             parsed.additional_directories,
             parsed.mcp_servers,
+            roblox_studio_eager_load,
         )
         .await
     {

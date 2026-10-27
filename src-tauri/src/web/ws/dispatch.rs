@@ -124,8 +124,8 @@ pub(super) async fn route_request(req: WsRequest, env: &HandlerEnv) -> WsReply {
         "create_session" => {
             handle_create_session(id, &req.payload, acp, registry, req.command_id.clone()).await
         }
-        "load_session" => handle_load_session(id, &req.payload, acp).await,
-        "resume_session" => handle_resume_session(id, &req.payload, acp).await,
+        "load_session" => handle_load_session(id, &req.payload, acp, registry).await,
+        "resume_session" => handle_resume_session(id, &req.payload, acp, registry).await,
         "close_session" => handle_close_session(id, &req.payload, acp).await,
         "dispose_ephemeral_session" => {
             handle_dispose_ephemeral_session(id, &req.payload, acp, relay, subscribed_clients).await
