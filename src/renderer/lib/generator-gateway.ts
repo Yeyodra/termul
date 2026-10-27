@@ -11,7 +11,11 @@
 import type { AcpTransport } from '@/lib/acp-transport'
 import { getAcpTransport } from '@/lib/acp-transport'
 import { createAcpBrainTransport } from '@/lib/generator/acp-brain-transport'
-import { type GeneratorAgent, resolveGeneratorAgent } from '@/lib/generator/agent-selection'
+import {
+  type GeneratorAgent,
+  type GeneratorAgentHint,
+  resolveGeneratorAgent
+} from '@/lib/generator/agent-selection'
 import { createAskBrain, createBrainTakesImages } from '@/lib/generator/ask-brain'
 import { CLOTHING_SYSTEM_PROMPT } from '@/lib/generator/engines/clothing'
 import { createGeneratorHandler } from '@/lib/generator/gateway-handler'
@@ -44,9 +48,9 @@ export function startGeneratorGateway(
   if (!gateway) return () => {}
 
   const queue = options.queue ?? new TaskQueue()
-  const resolve = options.agent ?? (() => resolveGeneratorAgent())
-  const brainOf = (): Brain => {
-    const agent = resolve()
+  const resolve = options.agent ?? ((hint: GeneratorAgentHint) => resolveGeneratorAgent(hint))
+  const brainOf = (hint: GeneratorAgentHint): Brain => {
+    const agent = resolve(hint)
     return agent ? { id: brainIdOf(agent.id), takesImages: agent.takesImages } : { id: 'custom' }
   }
 
@@ -55,14 +59,19 @@ export function startGeneratorGateway(
       queue,
       clothing: {
         queue,
-        brain: brainOf(),
+        brain: brainOf({ cwd: options.cwd }),
         askBrain: createAskBrain({
           transport: createAcpBrainTransport({
-            agentId: () => resolve()?.id ?? null,
+            agentId: () => resolve({ cwd: options.cwd })?.id ?? null,
             cwd: options.cwd
           })
         }),
-        brainTakesImages: createBrainTakesImages(() => resolve()?.takesImages ?? false),
+        brainTakesImages: createBrainTakesImages(
+          () => resolve({ cwd: options.cwd })?.takesImages ?? false
+        ),
+        agentFor: (task) =>
+          resolve({ agentId: task.agentId, sessionId: task.sessionId, cwd: options.cwd })?.id ??
+          null,
         system: options.system ?? CLOTHING_SYSTEM_PROMPT
       }
     })

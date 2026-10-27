@@ -45,11 +45,11 @@ export function createAcpBrainTransport(options: AcpBrainTransportOptions): Brai
   const timeoutMs = options.turnTimeoutMs ?? DEFAULT_TURN_TIMEOUT_MS
 
   return {
-    async send({ scope, messages }) {
+    async send({ scope, messages, brain }) {
       const last = messages[messages.length - 1]
       if (!last) throw new Error('a generator turn needs at least one message')
 
-      const agentId = options.agentId()
+      const agentId = brain?.runtimeAgentId ?? options.agentId()
       if (!agentId) {
         throw new Error(
           'no ACP agent is running, so the generator has nothing to ask; start a chat first'

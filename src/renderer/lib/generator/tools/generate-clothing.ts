@@ -3,9 +3,9 @@
  * poll.
  *
  * Generation takes minutes, so blocking the MCP response would time out the
- * agent's turn. The shape here mirrors `index:18913-18980` â€” see
- * `re/full-reverse/01-generator-loop/REPORT.md` Â§16.1 and
- * `10-tool-surface/REPORT.md` Â§3.7.
+ * agent's turn. The shape here mirrors `index:18913-18980` Ã¢â‚¬â€ see
+ * `re/full-reverse/01-generator-loop/REPORT.md` Ã‚Â§16.1 and
+ * `10-tool-surface/REPORT.md` Ã‚Â§3.7.
  */
 
 import { buildClothing } from '../engines/clothing/build'
@@ -36,6 +36,11 @@ export interface GenerateClothingArgs {
   type: DesignType
   prompt?: string
   design?: unknown
+  images?: string[]
+  /** The agent executing the tool call; authoritative for routing. */
+  agentId?: string
+  /** The chat that asked. */
+  sessionId?: string
 }
 
 /** What the tool returns before the work is done. */
@@ -51,7 +56,14 @@ export interface GenerateClothingResult {
   status: 'done' | 'failed' | 'cancelled' | 'running' | 'queued' | 'interrupted'
   taskId: string
   stage: string
-  result?: unknown
+  /** The design the engine accepted, when the task finished. */
+  design?: unknown
+  /** `data:image/png;base64,â€¦` of the rendered sheet. */
+  image?: string
+  /** What the checks found: `ok`, the issue list, size, coverage, colours. */
+  report?: unknown
+  /** One-line description for a model that cannot see the image. */
+  layout?: string
   error?: string
   summary?: string
 }
@@ -65,6 +77,15 @@ export interface ClothingToolDeps {
   system: string
   /** Live Studio state, folded into the first user message. */
   studio?: SessionStudio
+  /**
+   * Which agent to run on, per generation.
+   *
+   * Resolved from the task, not from the deps, because `deps` is built once when
+   * the gateway installs its handler and a window can serve chats on different
+   * harnesses. Returning `null` means "no agent", which the transport reports.
+   */
+  agentFor?: (task: { agentId?: string | null; sessionId?: string | null }) => string | null
+  images?: string[]
 }
 
 const ACCEPTED_NOTE =
@@ -150,16 +171,22 @@ export async function runClothingGeneration(
   report: (stage: string, detail?: string | null) => void,
   signal: AbortSignal
 ): Promise<LoopResult> {
+  const agentId = deps.agentFor?.(args) ?? null
+  const brain: Brain = { ...deps.brain, signal }
+  if (agentId) brain.runtimeAgentId = agentId
+
+  const images = args.images ?? deps.images ?? []
+
   const outcome = await designLoop({
     action: 'clothing',
     system: deps.system,
     first: firstMessage(args, deps.studio),
     prompt: args.prompt ?? `${args.type} design`,
     what: 'design',
-    brain: { ...deps.brain, signal },
+    brain,
     askBrain: deps.askBrain,
     brainTakesImages: deps.brainTakesImages,
-    build: async (spec) => buildClothing(spec, { type: args.type }),
+    build: async (spec) => buildClothing(spec, { type: args.type, images }),
     normalize: (spec) => spec,
     review: (built) => clothingReview(built),
     onStage: ({ stage, detail }) => report(stage, detail ?? null)
@@ -176,11 +203,15 @@ export function readClothingResult(queue: TaskQueue, taskId: string): GenerateCl
     return { status: 'failed', taskId, stage: 'Unknown', error: `No task ${taskId}` }
   }
   if (task.status === 'done') {
+    const built = task.result as { result?: unknown; built?: BuildResult } | null
     return {
       status: 'done',
       taskId,
       stage: task.stage,
-      result: task.result,
+      design: built?.built?.spec ?? built?.result ?? null,
+      image: built?.built?.sheet,
+      report: built?.built?.report,
+      layout: built?.built?.layout,
       summary: `${task.title} is ready`
     }
   }

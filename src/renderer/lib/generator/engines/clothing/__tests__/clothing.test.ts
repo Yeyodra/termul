@@ -396,7 +396,10 @@ describe('renderPixels', () => {
     expect(distinctColors(out)).toBe(1)
   })
 
-  it('is reproducible from the spec alone', () => {
+  // Two full 585x559 noise passes. That is ~650k value-noise evaluations, which
+  // clears the default 15s budget only when the suite runs unloaded, so the
+  // budget is raised here rather than left to chance.
+  it('is reproducible from the spec alone', { timeout: 60_000 }, () => {
     const spec = design([
       solid({ kind: 'noise', color: '#000000', color2: '#ffffff', size: 8, seed: 11 })
     ])

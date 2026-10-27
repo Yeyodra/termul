@@ -103,7 +103,9 @@ async function dispatch(deps: GeneratorHandlerDeps, call: GeneratorCall): Promis
     const accepted = queueGenerateClothing(deps.clothing, {
       type,
       prompt: typeof args.prompt === 'string' ? args.prompt : undefined,
-      design: spec
+      design: spec,
+      agentId: call.agentId,
+      sessionId: call.sessionId
     })
     return { callId: call.callId, ok: true, result: accepted }
   }

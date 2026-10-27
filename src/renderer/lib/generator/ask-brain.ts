@@ -1,11 +1,11 @@
-/**
+﻿/**
  * The seam between `designLoop` and a real model.
  *
  * Termul has two brain kinds and no shared abstraction above them, so this
  * module takes the transport as a callback rather than importing one. That keeps
  * the loop testable and keeps the ACP dependency out of the engine.
  *
- * The three facts `01-generator-loop/REPORT.md` §4 calls load-bearing:
+ * The three facts `01-generator-loop/REPORT.md` Â§4 calls load-bearing:
  *  - generation is a pure text/vision call: `tools: []`
  *  - the engine `action` rides the first turn only
  *  - a non-ACP brain gets its system prompt folded into the first user message,
@@ -22,6 +22,7 @@ export interface BrainTransport {
     /** Flattened conversation, oldest first. */
     messages: Array<{ role: 'user' | 'assistant'; text: string; image?: string }>
     system: string
+    brain?: Brain
   }): Promise<string>
 }
 
@@ -38,7 +39,7 @@ export interface AskBrainOptions {
 
 /**
  * Default image capability: an ACP agent's own `promptCapabilities.image`
- * decides, which the caller supplies. Without that answer, assume no — a
+ * decides, which the caller supplies. Without that answer, assume no â€” a
  * wrong "yes" sends an image the agent rejects, and the loop pays a retry.
  */
 export function defaultTakesImages(brain: Brain): boolean {
@@ -49,7 +50,7 @@ export function defaultTakesImages(brain: Brain): boolean {
  * Fold the system prompt into the first user turn.
  *
  * ACP has no system-prompt slot a generator can use, so every agent gets the
- * prompt prepended to its first message — RobloxKit does the same
+ * prompt prepended to its first message â€” RobloxKit does the same
  * (`gen3d:647`). Getting this wrong is silent: the model simply never sees the
  * schema it was supposed to author against, and answers with whatever else it
  * can call.
@@ -87,7 +88,8 @@ export function createAskBrain(options: AskBrainOptions) {
         text: message.text,
         ...(message.image ? { image: message.image } : {})
       })),
-      system: request.system
+      system: request.system,
+      brain: request.brain
     })
   }
 }

@@ -68,6 +68,12 @@ export interface Brain {
   /** `"<placeKey>/<threadId>"`-style session key, e.g. `gen/clothing`. */
   scope?: string
   /**
+   * The runtime agent id resolved for this turn. Carried on the brain rather than
+   * closed over by the transport, because a window can serve chats on different
+   * harnesses and the transport is built once.
+   */
+  runtimeAgentId?: string
+  /**
    * Whether this agent accepts pictures, from its own
    * `promptCapabilities.image`. Absent means unknown, which the loop treats
    * as "no": a rejected image costs a whole retry round.
