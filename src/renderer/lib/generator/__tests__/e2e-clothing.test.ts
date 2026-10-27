@@ -1,4 +1,4 @@
-/**
+﻿/**
  * The whole chain: agent calls the tool, gets a task id, the loop runs against a
  * stub brain, the engine renders, and the poll returns an artifact.
  *
@@ -120,7 +120,7 @@ describe('generate_clothing end to end', () => {
     const accepted = queueGenerateClothing(toolDeps, { type: 'shirt', prompt: 'a racing jacket' })
 
     expect(accepted.taskId).toMatch(/^task-/)
-    expect(accepted.note).toContain('get_task_result')
+    expect(accepted.note).toContain('get_clothing_task')
 
     await queue.drain()
 

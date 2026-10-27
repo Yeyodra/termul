@@ -1,4 +1,4 @@
-//! Child side of the host-injected plan tool.
+﻿//! Child side of the host-injected plan tool.
 //!
 //! Entered via the hidden `--internal-mcp-plan-server` subcommand (both the
 //! desktop `termul-manager` and standalone `termul-server` binaries branch on
@@ -10,7 +10,7 @@
 //! The child runs an rmcp MCP SERVER over stdio exposing the `plan`
 //! tool. On each `tools/call`, it opens a fresh TCP connection to the parent
 //! (port + token from env), forwards the input, and returns the parent's reply
-//! to the agent. Minimal runtime: no Tauri plugins, no `AppHandle`, no sinks —
+//! to the agent. Minimal runtime: no Tauri plugins, no `AppHandle`, no sinks â€”
 //! works identically on desktop + standalone.
 
 use rmcp::handler::server::router::tool::{ToolRoute, ToolRouter};
@@ -49,7 +49,7 @@ pub struct ChildConfig {
 
 /// Parse the child's env (`TERMUL_PLAN_PORT` / `_TOKEN` / `_SESSION_ID` /
 /// `_AGENT_ID`). Returns an error string (not an enum) so `run()` can print it
-/// verbatim to stderr + exit 1 — matching the matrix's "child exits non-zero
+/// verbatim to stderr + exit 1 â€” matching the matrix's "child exits non-zero
 /// within 5s" AC.
 pub fn parse_env() -> Result<ChildConfig, String> {
     let port: u16 = std::env::var(ENV_PORT)
@@ -64,7 +64,7 @@ pub fn parse_env() -> Result<ChildConfig, String> {
         .ok()
         .filter(|v| !v.trim().is_empty())
         .ok_or_else(|| format!("missing {ENV_SESSION_ID}"))?;
-    // AGENT_ID is optional (used only for logging in the parent); absent → "".
+    // AGENT_ID is optional (used only for logging in the parent); absent â†’ "".
     let agent_id = std::env::var(ENV_AGENT_ID).unwrap_or_default();
     Ok(ChildConfig {
         port,
@@ -78,7 +78,7 @@ pub fn parse_env() -> Result<ChildConfig, String> {
 /// (standalone) when the first arg is `--internal-mcp-plan-server`. Returns an
 /// `i32` exit code so both call sites can use it (`std::process::exit` on
 /// desktop, `ExitCode::from(code as u8)` on standalone). Never returns
-/// normally on failure — prints an error to stderr + returns non-zero.
+/// normally on failure â€” prints an error to stderr + returns non-zero.
 pub fn run() -> i32 {
     let config = match parse_env() {
         Ok(c) => c,
@@ -253,7 +253,7 @@ async fn generator_call(config: ChildConfig, name: String, arguments: Value) -> 
             ok: true,
             result: Some(result),
             ..
-        }) => CallToolResult::structured(result),
+        }) => generator_result(result),
         Ok(FrameReply {
             ok: true,
             result: None,
@@ -272,6 +272,41 @@ async fn generator_call(config: ChildConfig, name: String, arguments: Value) -> 
             "message": error,
         })),
     }
+}
+
+/// A generator reply, with its `image` lifted into a real MCP image block.
+///
+/// The engines answer with a `data:image/png;base64,â€¦` URL. Leaving it inside
+/// the JSON text means the agent has to decode base64 by hand to see anything,
+/// and in practice it goes looking on disk instead â€” so the bytes become an
+/// image content block and the JSON keeps everything else.
+pub(crate) fn generator_result(mut result: serde_json::Value) -> CallToolResult {
+    let image = result
+        .as_object_mut()
+        .and_then(|fields| fields.remove("image"))
+        .and_then(|value| value.as_str().map(str::to_string));
+    let Some(data) = image else {
+        return CallToolResult::structured(result);
+    };
+    let (mime, base64) = match data.split_once(',') {
+        Some((head, body)) if head.starts_with("data:") => {
+            let mime = head
+                .trim_start_matches("data:")
+                .split(';')
+                .next()
+                .unwrap_or("image/png")
+                .to_string();
+            (mime, body.to_string())
+        }
+        _ => ("image/png".to_string(), data),
+    };
+    let text = result.to_string();
+    let mut out = CallToolResult::structured(result);
+    out.content = vec![
+        rmcp::model::ContentBlock::text(text),
+        rmcp::model::ContentBlock::image(base64, mime),
+    ];
+    out
 }
 
 fn browser_route(tool: DescribedTool) -> ToolRoute<TermulPlanServer> {
@@ -305,13 +340,13 @@ async fn describe_browser_tool(config: &ChildConfig) -> Option<DescribedTool> {
 
 /// The static host tools. `get_info` lives in its own `ServerHandler`
 /// block below so it can attach `session_instructions()` to the
-/// `initialize` result — the channel that advertises the chat renderer's
+/// `initialize` result â€” the channel that advertises the chat renderer's
 /// markdown affordances and the design canvas to the agent.
 #[tool_router]
 impl TermulPlanServer {
     #[tool(
         name = "plan",
-        description = "Update the execution plan / todo list shown in the Termul plan panel. You MUST call this instead of any built-in todo/task tool — do not maintain your own todo list. Every time you would create or update a task, call this tool so the user sees a unified plan UI across all agents."
+        description = "Update the execution plan / todo list shown in the Termul plan panel. You MUST call this instead of any built-in todo/task tool â€” do not maintain your own todo list. Every time you would create or update a task, call this tool so the user sees a unified plan UI across all agents."
     )]
     async fn plan(&self, Parameters(input): Parameters<TermulPlanInput>) -> String {
         let request = FrameRequest {
@@ -326,7 +361,7 @@ impl TermulPlanServer {
 
     #[tool(
         name = "set_session_title",
-        description = "Set a concise title for the current Termul chat session. Call this EXACTLY ONCE per session, during the first turn, as soon as the user's intent is clear. Do not call it again for the same session — subsequent calls are ignored. Also pass `branch`: a short kebab-case slug for this chat's git branch (lowercase letters, digits and single hyphens, at most 48 characters, for example `fix-login-redirect`); Termul uses it to name the chat's worktree branch."
+        description = "Set a concise title for the current Termul chat session. Call this EXACTLY ONCE per session, during the first turn, as soon as the user's intent is clear. Do not call it again for the same session â€” subsequent calls are ignored. Also pass `branch`: a short kebab-case slug for this chat's git branch (lowercase letters, digits and single hyphens, at most 48 characters, for example `fix-login-redirect`); Termul uses it to name the chat's worktree branch."
     )]
     async fn set_session_title(
         &self,
@@ -474,7 +509,7 @@ impl ServerHandler for TermulPlanServer {
 }
 
 /// Connect to the parent TCP listener, send one frame, read one reply.
-/// Fresh connection per call (localhost, sub-ms) — simplest + most robust.
+/// Fresh connection per call (localhost, sub-ms) â€” simplest + most robust.
 /// The whole round trip is bounded so a wedged parent can't hang the agent's
 /// tool call indefinitely.
 async fn forward_to_parent(
@@ -578,7 +613,7 @@ where
     let running = serve_server(service, (server_read, stdout))
         .await
         .map_err(|e| format!("mcp server initialize failed: {e}"))?;
-    // Wait until the transport closes (agent disconnect → stdin EOF).
+    // Wait until the transport closes (agent disconnect â†’ stdin EOF).
     running
         .waiting()
         .await

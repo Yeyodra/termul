@@ -43,7 +43,13 @@ tool with that id rather than calling generate_* again, which would start a seco
 artifact. Do not write .lua files, .obj files or image files to disk to stand in for an asset, \
 and do not hand-author a Roblox instance in place of a generator: these tools produce the \
 artifact and hand it back. A generator that rejects a spec returns the problems it found; pass \
-them back to the user rather than silently retrying with a different idea.";
+them back to the user rather than silently retrying with a different idea. Publishing a \
+generated garment is the user's step, not yours: Roblox does not let an app publish classic \
+clothing, so a clothing image has to be uploaded by hand at \
+https://create.roblox.com/dashboard/creations?activeTab=Shirt (Pants and TShirt for the other \
+two types). Do not stand up a local HTTP server, do not look for an asset-upload tool here, and \
+do not guess at ShirtTemplate: tell the user to upload the picture they were shown, then carry \
+on with whatever they ask next.";
 
 /// The generator part of the session `instructions`.
 #[must_use]
@@ -158,14 +164,22 @@ fn generate_tool(family: &Family) -> Tool {
 }
 
 /// `get_<engine>_task` for one family.
+///
+/// The wording matches what the model actually receives. `child.rs` lifts
+/// `image` out of the JSON and into an MCP image content block, so describing it
+/// as a base64 field inside the JSON is wrong and sent a model looking on disk
+/// for a file that was never written.
 fn task_tool(family: &Family) -> Tool {
     Tool::new(
         format!("get_{}_task", family.engine),
         format!(
             "{DESCRIPTION_TAG}Read a {} generation started by `generate_{}`. Status is one of \
-             queued, running, done, failed or cancelled. When it is done the reply carries the \
-             artifact (its path and a preview); when it failed it carries the reason; while it \
-             is still running it carries the stage the engine is on.",
+             queued, running, done, failed or cancelled. When it is done the rendered picture \
+             arrives as an image content block beside this reply, so look at it; the JSON \
+             alongside carries `design` (the spec the engine accepted), `report` (what the \
+             checks found, including any region left bare) and `layout` (the render in words, \
+             for when you cannot see pictures). While it is still running the reply carries the \
+             stage the engine is on; poll again rather than starting a second generation.",
             family.noun, family.engine
         ),
         json!({

@@ -1,4 +1,4 @@
-//! End-to-end: an agent's `generate_clothing` call travels the whole chain.
+﻿//! End-to-end: an agent's `generate_clothing` call travels the whole chain.
 //!
 //! A real parent, a real loopback socket and a real child frame; the renderer
 //! is faked, because it is the only leg that needs a DOM. What this proves is
@@ -12,6 +12,7 @@ use std::time::Duration;
 
 use crate::acp::host_mcp::gateway_harness::Harness;
 use crate::acp::host_mcp::parent::{GeneratorReplyPayload, EVENT_GENERATOR_CALL};
+use crate::acp::host_mcp::child;
 use crate::acp::host_mcp::{FrameKind, FrameRequest};
 
 fn send_frame(port: u16, frame: &FrameRequest) -> serde_json::Value {
@@ -168,4 +169,67 @@ fn a_frame_without_a_tool_name_is_refused_without_reaching_the_renderer() {
 #[test]
 fn the_generator_event_constant_is_the_wire_name_the_renderer_listens_for() {
     assert_eq!(EVENT_GENERATOR_CALL, "acp:generator_call");
+}
+
+#[test]
+fn a_result_carrying_an_image_sends_it_as_a_real_image_block() {
+    let result = serde_json::json!({
+        "status": "done",
+        "taskId": "t-1",
+        "image": "data:image/png;base64,iVBORw0KGgo=",
+        "design": { "type": "shirt" }
+    });
+
+    let out = child::generator_result(result);
+    let kinds: Vec<&str> = out
+        .content
+        .iter()
+        .map(|block| match block {
+            rmcp::model::ContentBlock::Text(_) => "text",
+            rmcp::model::ContentBlock::Image(_) => "image",
+            _ => "other",
+        })
+        .collect();
+    assert_eq!(kinds, vec!["text", "image"], "the agent must see the render");
+    assert!(
+        out.structured_content
+            .as_ref()
+            .and_then(|value| value.get("image"))
+            .is_none(),
+        "the base64 is not repeated in the JSON"
+    );
+    assert_eq!(
+        out.structured_content
+            .as_ref()
+            .and_then(|value| value.get("taskId"))
+            .and_then(|value| value.as_str()),
+        Some("t-1"),
+        "everything else stays in the structured payload"
+    );
+}
+
+#[test]
+fn a_result_without_an_image_is_plain_structured_json() {
+    let result = serde_json::json!({ "status": "running", "taskId": "t-2" });
+
+    let out = child::generator_result(result);
+
+    assert_eq!(out.content.len(), 1);
+    assert!(matches!(
+        out.content[0],
+        rmcp::model::ContentBlock::Text(_)
+    ));
+}
+
+#[test]
+fn a_bare_base64_payload_is_still_treated_as_a_png() {
+    let result = serde_json::json!({ "image": "iVBORw0KGgo=" });
+
+    let out = child::generator_result(result);
+
+    assert_eq!(out.content.len(), 2);
+    match &out.content[1] {
+        rmcp::model::ContentBlock::Image(image) => assert_eq!(image.mime_type, "image/png"),
+        _ => panic!("expected an image block"),
+    }
 }

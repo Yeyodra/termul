@@ -88,8 +88,16 @@ export interface ClothingToolDeps {
   images?: string[]
 }
 
-const ACCEPTED_NOTE =
-  'Still designing in the background. Carry on; call get_task_result with this task_id.'
+/**
+ * The note returned with a task id.
+ *
+ * Derived from the engine name rather than hard-coded, because the poll tool is
+ * `get_<engine>_task`: an earlier constant named `get_task_result`, which does
+ * not exist, and the model was told to call it.
+ */
+export function acceptedNote(engine = 'clothing'): string {
+  return `Still designing in the background. Carry on; call get_${engine}_task with this task_id.`
+}
 
 /**
  * Build the first user message. The Studio context block goes first so the
@@ -160,7 +168,7 @@ export function queueGenerateClothing(
     status: task.status === 'running' ? 'running' : 'queued',
     taskId: task.id,
     stage: task.stage,
-    note: ACCEPTED_NOTE
+    note: acceptedNote('clothing')
   }
 }
 
