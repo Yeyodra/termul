@@ -119,7 +119,10 @@ export function firstMessage(args: GenerateClothingArgs, studio?: SessionStudio)
 }
 
 /** What the model is told to judge during the checking stage. */
-export function clothingReview(built: BuildResult): {
+export function clothingReview(
+  built: BuildResult,
+  hasImage = true
+): {
   lead: string
   facts: string
   layout?: string
@@ -130,7 +133,9 @@ export function clothingReview(built: BuildResult): {
     : 'No issues found.'
 
   return {
-    lead: 'Here is the garment sheet you designed, laid out flat as Roblox maps it onto the body.',
+    lead: hasImage
+      ? 'Here is the garment you designed, laid out flat as Roblox maps it onto the body.'
+      : 'The renderer drew it (no picture: judge it from the description below).',
     facts: `Checks ${report.ok ? 'passed' : 'failed'}. ${issues}`,
     layout: built.layout
   }
