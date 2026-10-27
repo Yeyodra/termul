@@ -1,4 +1,4 @@
-//! A live JSON-RPC session with `StudioMCP.exe`.
+﻿//! A live JSON-RPC session with `StudioMCP.exe`.
 //!
 //! Spawning the child and completing `initialize` costs ~69 ms, but every later
 //! `tools/call` on the same child costs 1-2 ms. The lamp polls, so the session is
@@ -121,7 +121,7 @@ impl Client {
     }
 
     /// Studios the proxy can reach. An empty vector means Studio is not open
-    /// (or has no place loaded) — not an error.
+    /// (or has no place loaded) â€” not an error.
     pub async fn list_studios(&mut self) -> Result<Vec<StudioEntry>, String> {
         let reply = self
             .request(
@@ -204,6 +204,15 @@ impl std::fmt::Debug for StudioSession {
 pub struct StudioSnapshot {
     /// Studios the proxy can reach right now.
     pub studios: Vec<StudioEntry>,
+}
+
+impl StudioSnapshot {
+    /// The place name to show, when a Studio instance reports one. A reachable
+    /// Studio with no place loaded yields None, not an empty snapshot.
+    #[must_use]
+    pub fn place_name(&self) -> Option<String> {
+        self.studios.first().and_then(|studio| studio.name.clone())
+    }
 }
 
 impl StudioSession {
@@ -323,7 +332,7 @@ async fn read_loop(reader: impl AsyncBufRead + Unpin, pending: Pending) {
 ///
 /// The proxy answers with MCP content blocks whose text is a JSON document:
 /// `{"studios":[{"id":..,"name":..}]}`. A missing or malformed payload reads as
-/// "no studio", never as an error — the lamp then shows Studio as not connected.
+/// "no studio", never as an error â€” the lamp then shows Studio as not connected.
 pub fn parse_studios(result: Option<&Value>) -> Result<Vec<StudioEntry>, String> {
     let Some(result) = result else {
         return Ok(Vec::new());
