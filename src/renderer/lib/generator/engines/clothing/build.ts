@@ -1,9 +1,9 @@
-/**
+﻿/**
  * The clothing engine behind `designLoop`.
  *
  * `build(design)` is the validator contract: it returns a `BuildResult` on
  * success and **throws** an error carrying `problems: string[]` when the design
- * is invalid. That throw is the whole self-correction mechanism — the loop
+ * is invalid. That throw is the whole self-correction mechanism â€” the loop
  * echoes those strings back to the model and re-asks.
  *
  * The render is async because an `image` layer draws from a picture that has to
@@ -11,6 +11,8 @@
  */
 
 import type { BuildResult } from '../../types'
+import type { Rig } from './avatar/rig'
+import { renderClothingSheet } from './avatar/sheet'
 import { checkDesign } from './check'
 import { SHEET_DIMENSIONS } from './layout'
 import { pngDataUrl } from './png'
@@ -50,6 +52,10 @@ export interface ClothingBuildOptions {
   canvas?: SheetCanvas
   /** Overrides image decoding, for tests. */
   loadImage?: ImageLoader
+  /** Render the avatar review image. Off for headless callers with no WebGL. */
+  avatarSheet?: boolean
+  rig?: Rig
+  skin?: string
 }
 
 /** Decode a data URL through an `Image`, as upstream's cached loader does. */
@@ -92,10 +98,26 @@ function createCanvas(width: number, height: number): SheetCanvas {
  *
  * `report.ok` gates `DONE` acceptance, and `layout` is the per-layer inventory
  * the model reads when deciding whether to keep the design.
+ *
+ * `sheet` is the review image and `template` the flat atlas. They are different
+ * pictures on purpose: the review turn shows the garment worn on an avatar, which
+ * is the only way a model can judge drape, proportion and motif placement. The
+ * atlas is still returned because it is the artifact that gets uploaded.
+ *
+ * `avatarSheet: false` skips the 3D pass. It exists for headless callers with no
+ * WebGL context; the app always leaves it on.
  */
 export async function buildClothing(
   spec: unknown,
-  { type, images = [], canvas, loadImage = defaultImageLoader }: ClothingBuildOptions
+  {
+    type,
+    images = [],
+    canvas,
+    loadImage = defaultImageLoader,
+    avatarSheet = true,
+    rig = 'R15',
+    skin
+  }: ClothingBuildOptions
 ): Promise<BuildResult> {
   const normalized = attachImages(normalizeDesign(spec as ClothingDesign, type), images)
 
@@ -118,9 +140,13 @@ export async function buildClothing(
   const pixels = ctx.getImageData(0, 0, drawn.width, drawn.height).data
   const check = checkDesign(normalized, pixels, drawn.width, drawn.height)
 
+  const template = pngDataUrl(drawn)
+  const review = avatarSheet ? reviewSheet(drawn, type, { rig, skin }) : null
+
   return {
     spec: normalized,
-    sheet: pngDataUrl(drawn),
+    sheet: review ?? template,
+    template,
     report: {
       ok: check.ok,
       issues: check.issues,
@@ -129,6 +155,26 @@ export async function buildClothing(
       size: check.size,
       empty: check.empty
     },
-    layout: layerLayout(normalized, check) + '\n' + checkFacts(check.issues)
+    layout: [layerLayout(normalized, check), checkFacts(check.issues)].join('\n')
+  }
+}
+
+/**
+ * The avatar review image, or `null` when WebGL is unavailable.
+ *
+ * A missing WebGL context must not fail a generation: the design is already
+ * built and checked, and the flat atlas is a worse review image but still a
+ * truthful one.
+ */
+function reviewSheet(
+  drawn: SheetCanvas,
+  type: DesignType,
+  { rig, skin }: { rig?: Rig; skin?: string }
+): string | null {
+  try {
+    const atlas = drawn as unknown as HTMLCanvasElement
+    return renderClothingSheet({ [type]: atlas }, atlas, { rig, skin })
+  } catch {
+    return null
   }
 }
