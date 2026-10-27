@@ -23,6 +23,7 @@ export function sectionForTab(tab: WorkspaceTab | null | undefined): MobileSecti
     case 'commit-diff':
     case 'browser':
     case 'canvas':
+    case 'artifact':
       return 'editors'
     case 'git-history':
       return null

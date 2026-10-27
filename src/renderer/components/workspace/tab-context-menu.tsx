@@ -56,7 +56,8 @@ export const KIND_PLURAL_LABELS: Record<TabContextMenuKind, string> = {
   diff: 'Diff Tabs',
   'commit-diff': 'Commit Diff Tabs',
   'agent-chat': 'Agent Chats',
-  canvas: 'Canvas Tabs'
+  canvas: 'Canvas Tabs',
+  artifact: 'Artifact Tabs'
 }
 
 /**

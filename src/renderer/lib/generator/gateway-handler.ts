@@ -12,9 +12,30 @@ import type { GeneratorCall, GeneratorReply } from '@/lib/acp-transport/generato
 import type { TaskQueue } from '@/lib/generator/task-queue'
 import {
   type ClothingToolDeps,
+  type GenerateClothingResult,
   queueGenerateClothing,
   readClothingResult
 } from '@/lib/generator/tools/generate-clothing'
+import { useArtifactStore } from '@/stores/artifact-store'
+
+/**
+ * Hand a finished garment to the viewport.
+ *
+ * Published from the poll, not from the generation: the artifact is only ready
+ * when the engine says so, and a chat that never polls never showed it.
+ */
+function publishClothingArtifact(result: GenerateClothingResult): void {
+  if (!result.atlas || !result.kind) return
+  useArtifactStore.getState().publish(
+    {
+      kind: 'clothing',
+      type: result.kind,
+      atlas: result.atlas,
+      name: result.name
+    },
+    null
+  )
+}
 
 /** Which engine each tool family needs, for the refusal message. */
 const UNAVAILABLE = new Set([
@@ -120,13 +141,14 @@ async function dispatch(deps: GeneratorHandlerDeps, call: GeneratorCall): Promis
         error: 'get_clothing_task needs a task_id string'
       }
     }
+    const result = readClothingResult(deps.queue, taskId)
+    if (result.status === 'done') publishClothingArtifact(result)
     return {
       callId: call.callId,
       ok: true,
-      result: readClothingResult(deps.queue, taskId)
+      result
     }
   }
-
   return {
     callId: call.callId,
     ok: false,

@@ -366,6 +366,13 @@ function createContext2d(canvas: { width: number; height: number }) {
         points.push([cx + Math.cos(angle) * rx, cy + Math.sin(angle) * ry])
       }
     },
+    arc(cx: number, cy: number, radius: number, start: number, end: number) {
+      const steps = 24
+      for (let step = 0; step <= steps; step += 1) {
+        const angle = start + ((end - start) * step) / steps
+        points.push([cx + Math.cos(angle) * radius, cy + Math.sin(angle) * radius])
+      }
+    },
     rect(x: number, y: number, w: number, h: number) {
       rects.push({ x, y, w, h })
       points.push([x, y], [x + w, y], [x + w, y + h], [x, y + h])

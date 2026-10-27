@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
+import { ArtifactViewportLayer } from '@/components/artifacts/ArtifactViewportLayer'
 import { CanvasMountLayer } from '@/components/canvas/CanvasMountLayer'
 import { ShellFrame } from '@/components/shell/ShellFrame'
 import { WebTokenGateScreen } from '@/components/WebTokenGateScreen'
@@ -271,6 +272,7 @@ export default function WorkspaceLayout(): React.JSX.Element {
       <>
         <WebTokenGateScreen />
         <CanvasMountLayer key="canvas-mount-layer" />
+        <ArtifactViewportLayer key="artifact-viewport-layer" />
       </>
     )
   }
@@ -299,6 +301,7 @@ export default function WorkspaceLayout(): React.JSX.Element {
           appModals={appModals}
         />
         <CanvasMountLayer key="canvas-mount-layer" />
+        <ArtifactViewportLayer key="artifact-viewport-layer" />
       </>
     )
   }
@@ -325,6 +328,7 @@ export default function WorkspaceLayout(): React.JSX.Element {
         appModals={appModals}
       />
       <CanvasMountLayer key="canvas-mount-layer" />
+      <ArtifactViewportLayer key="artifact-viewport-layer" />
     </>
   )
 }
