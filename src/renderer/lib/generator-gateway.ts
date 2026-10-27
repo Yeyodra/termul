@@ -11,6 +11,7 @@
 import type { AcpTransport } from '@/lib/acp-transport'
 import { getAcpTransport } from '@/lib/acp-transport'
 import { createAcpBrainTransport } from '@/lib/generator/acp-brain-transport'
+import { resolveGeneratorAgentId } from '@/lib/generator/agent-selection'
 import {
   createAskBrain,
   createBrainTakesImages,
@@ -22,9 +23,7 @@ import { TaskQueue } from '@/lib/generator/task-queue'
 import type { Brain } from '@/lib/generator/types'
 
 export interface GeneratorGatewayOptions {
-  /** The ACP agent that answers generator turns. */
-  agentId: string
-  /** Working directory for generator sessions. */
+  /** Working directory for generator sessions: the active project. */
   cwd: string
   /** The engine's system prompt. Defaults to the clothing prompt. */
   system?: string
@@ -43,7 +42,10 @@ export function startGeneratorGateway(
   const queue = options.queue ?? new TaskQueue()
   const brain: Brain = { id: 'claude' }
   const askBrain = createAskBrain({
-    transport: createAcpBrainTransport({ agentId: options.agentId, cwd: options.cwd })
+    transport: createAcpBrainTransport({
+      agentId: () => resolveGeneratorAgentId(),
+      cwd: options.cwd
+    })
   })
   const brainTakesImages = createBrainTakesImages(defaultTakesImages)
 

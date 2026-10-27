@@ -3145,3 +3145,56 @@ fn a_machine_without_studio_still_gets_a_working_thinking_meta() {
     assert!(meta.get("systemPrompt").is_none());
     assert!(studio_meta_pointer(&meta, "/options/mcpServers").is_none());
 }
+
+#[test]
+fn the_host_server_is_also_eager_loaded_so_the_generator_tools_are_callable() {
+    let roblox = RobloxEagerLoad::with_studio_command(PathBuf::from("/studio/StudioMCP.exe"));
+    let meta = roblox.meta_with_place_name(None);
+    assert_eq!(
+        studio_meta_pointer(&meta, "/options/mcpServers/termul/alwaysLoad")
+            .and_then(|value| value.as_bool()),
+        Some(true),
+        "the generator tools live on the host server, so it needs the same flag"
+    );
+    assert_eq!(
+        studio_meta_pointer(&meta, "/options/mcpServers/termul/args/0")
+            .and_then(|value| value.as_str().map(str::to_string)),
+        Some(crate::acp::host_mcp::CHILD_ARG.to_string()),
+        "the entry must re-execute as the MCP child"
+    );
+    assert!(studio_meta_pointer(&meta, "/options/mcpServers/termul/command").is_some());
+}
+
+#[test]
+fn an_inactive_eager_load_names_no_host_server() {
+    let meta = RobloxEagerLoad::default().meta_with_place_name(Some("My Place"));
+    assert!(studio_meta_pointer(&meta, "/options/mcpServers/termul").is_none());
+}
+
+#[tokio::test]
+async fn the_host_server_leaves_the_acp_array_so_the_meta_flag_survives() {
+    let roblox = RobloxEagerLoad::with_studio_command(PathBuf::from("/studio/StudioMCP.exe"));
+    let servers = vec![
+        McpServer::Stdio(McpServerStdio::new("termul", "/app/termul-manager")),
+        McpServer::Stdio(McpServerStdio::new("roblox-studio", "/studio/StudioMCP.exe")),
+        McpServer::Stdio(McpServerStdio::new("other", "/usr/bin/other")),
+    ];
+    let (kept, meta) = shape_session_request_with_place(true, &roblox, servers, None).await;
+    let names: Vec<String> = kept
+        .iter()
+        .filter_map(|server| match server {
+            McpServer::Stdio(stdio) => Some(stdio.name.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(names, vec!["other".to_string()], "both eager servers are dropped from the array");
+    let meta = meta.expect("meta");
+    for name in ["termul", "roblox-studio"] {
+        assert_eq!(
+            studio_meta_pointer(&meta, &format!("/options/mcpServers/{name}/alwaysLoad"))
+                .and_then(|value| value.as_bool()),
+            Some(true),
+            "{name} carries alwaysLoad in _meta"
+        );
+    }
+}

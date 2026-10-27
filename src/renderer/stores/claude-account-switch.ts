@@ -23,7 +23,9 @@ import { useAgentChatLifetimeStore } from '@/stores/agent-chat-lifetime-store'
 import { getAgentChatSessionIdsInAllTrees, useWorkspaceStore } from '@/stores/workspace-store'
 
 /** Config id of the host-managed Claude ACP agent. */
-export const CLAUDE_AGENT_CONFIG_ID = 'acp-registry:claude-acp'
+export { CLAUDE_AGENT_CONFIG_ID } from '@/lib/claude-agent-id'
+
+import { CLAUDE_AGENT_CONFIG_ID } from '@/lib/claude-agent-id'
 
 /** The agent config of a chat: the live reuse-key map first, then the session index. */
 export function sessionAgentConfigId(state: AcpState, sessionId: string): string | null {

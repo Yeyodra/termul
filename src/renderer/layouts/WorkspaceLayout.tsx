@@ -32,7 +32,6 @@ import { startCanvasGateway } from '@/lib/canvas-gateway'
 import { startGeneratorGateway } from '@/lib/generator-gateway'
 import { useWebAuthGate } from '@/lib/web-auth-gate'
 import { isWorkspaceRoutePath } from '@/lib/workspace-route'
-import { CLAUDE_AGENT_CONFIG_ID } from '@/stores/claude-account-switch'
 import { useGitSheetStore } from '@/stores/git-sheet-store'
 import {
   useActiveProject,
@@ -84,10 +83,7 @@ export default function WorkspaceLayout(): React.JSX.Element {
   // and an ACP session, neither of which exists in the MCP child.
   useEffect(() => {
     if (!activeProject?.path) return
-    return startGeneratorGateway({
-      agentId: CLAUDE_AGENT_CONFIG_ID,
-      cwd: activeProject.path
-    })
+    return startGeneratorGateway({ cwd: activeProject.path })
   }, [activeProject?.path])
   const { switchTo: switchProjectFromPalette } = useProjectSwitch('CommandPalette')
 

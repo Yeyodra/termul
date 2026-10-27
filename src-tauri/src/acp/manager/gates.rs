@@ -485,6 +485,15 @@ pub(super) fn requests_summarized_thinking(config: &AgentConfig) -> bool {
 /// the override targets a server the adapter never sees.
 pub(super) const ROBLOX_STUDIO_MCP_NAME: &str = "roblox-studio";
 
+/// The host-injected server's name, as `build_internal_plan_stdio` registers it.
+pub(super) const HOST_MCP_NAME: &str = "termul";
+
+/// The binary that re-executes as the host MCP child. Same resolution the
+/// stdio descriptor uses, so the `_meta` entry names the same executable.
+fn host_exe() -> PathBuf {
+    std::env::current_exe().unwrap_or_else(|_| PathBuf::from("termul-manager"))
+}
+
 /// Per-session Roblox eager-load shaping: whether this session asked for it and
 /// where `StudioMCP.exe` actually is.
 ///
@@ -511,6 +520,9 @@ pub(super) struct RobloxEagerLoad {
     /// `Some` only when the eager load is both requested and possible: the
     /// Roblox project asked for it *and* `StudioMCP.exe` resolved.
     studio_command: Option<PathBuf>,
+    /// The binary that re-executes as the host `termul` MCP child, so its
+    /// entry can carry `alwaysLoad` alongside the Studio one.
+    host_exe: Option<PathBuf>,
 }
 
 impl RobloxEagerLoad {
@@ -533,6 +545,7 @@ impl RobloxEagerLoad {
         match path {
             Some(path) => Self {
                 studio_command: Some(path),
+                host_exe: Some(host_exe()),
             },
             None => {
                 // The path contains the user profile, so it is never logged.
@@ -551,6 +564,7 @@ impl RobloxEagerLoad {
     pub(super) fn with_studio_command(path: PathBuf) -> Self {
         Self {
             studio_command: Some(path),
+            host_exe: Some(host_exe()),
         }
     }
 
@@ -596,6 +610,22 @@ impl RobloxEagerLoad {
                     "alwaysLoad": true,
                 }),
             );
+            // The host `termul` server carries the generator tools. It is a
+            // stdio server this process re-executes, so its entry is the same
+            // shape; without it the generator tools are advertised by name but
+            // deferred, and an agent cannot call what it has no schema for.
+            if let Some(exe) = &self.host_exe {
+                servers.insert(
+                    HOST_MCP_NAME.to_string(),
+                    serde_json::json!({
+                        "type": "stdio",
+                        "command": exe.to_string_lossy(),
+                        "args": [crate::acp::host_mcp::CHILD_ARG],
+                        "env": {},
+                        "alwaysLoad": true,
+                    }),
+                );
+            }
             options.insert("mcpServers".to_string(), Value::Object(servers));
             meta.insert(
                 "systemPrompt".to_string(),
@@ -627,7 +657,21 @@ impl RobloxEagerLoad {
         servers
             .into_iter()
             .filter(|server| !is_roblox_studio_server(server))
+            .filter(|server| !is_host_server(server))
             .collect()
+    }
+}
+
+/// `true` for the host-injected `termul` stdio entry, which carries the
+/// generator tools and is re-sent through `_meta` with `alwaysLoad`.
+pub(crate) fn is_host_server(server: &McpServer) -> bool {
+    match server {
+        McpServer::Stdio(stdio) => stdio.name == HOST_MCP_NAME,
+        McpServer::Http(http) => http.name == HOST_MCP_NAME,
+        McpServer::Sse(sse) => sse.name == HOST_MCP_NAME,
+        // `McpServer` is `#[non_exhaustive]`: an unknown future transport is
+        // never assumed to be the host entry.
+        _ => false,
     }
 }
 

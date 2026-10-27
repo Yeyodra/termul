@@ -23,8 +23,8 @@ import {
 import type { BrainTransport } from '@/lib/generator/ask-brain'
 
 export interface AcpBrainTransportOptions {
-  /** Which ACP agent answers. */
-  agentId: string
+  /** Which ACP agent answers: a runtime agent id, resolved per call. */
+  agentId: () => string | null
   /** Working directory for the session. */
   cwd: string
   /** How long one turn may take before the call gives up. */
@@ -49,7 +49,14 @@ export function createAcpBrainTransport(options: AcpBrainTransportOptions): Brai
       const last = messages[messages.length - 1]
       if (!last) throw new Error('a generator turn needs at least one message')
 
-      const session = await acpNewSession(options.agentId, options.cwd, [], {
+      const agentId = options.agentId()
+      if (!agentId) {
+        throw new Error(
+          'no ACP agent is running, so the generator has nothing to ask; start a chat first'
+        )
+      }
+
+      const session = await acpNewSession(agentId, options.cwd, [], {
         ephemeral: true,
         promotable: false
       })
@@ -79,12 +86,12 @@ export function createAcpBrainTransport(options: AcpBrainTransportOptions): Brai
       })
 
       try {
-        await acpSendPrompt(options.agentId, sessionId, text)
+        await acpSendPrompt(agentId, sessionId, text)
         await finished
         return collected
       } finally {
         stopChunks()
-        await acpCloseSession(options.agentId, sessionId).catch(() => undefined)
+        await acpCloseSession(agentId, sessionId).catch(() => undefined)
       }
     }
   }
