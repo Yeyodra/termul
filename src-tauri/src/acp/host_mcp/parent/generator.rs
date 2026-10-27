@@ -16,7 +16,6 @@ use tokio::sync::oneshot;
 use super::HostPlanServer;
 use crate::acp::events;
 use crate::acp::host_mcp::FrameReply;
-
 /// How long the host waits for the renderer to answer one generator call.
 ///
 /// A `generate_*` call only queues work and a `get_*_task` call only reads a
@@ -98,7 +97,10 @@ impl HostPlanServer {
         self.pending_generators.lock().remove(&call_id);
 
         match outcome {
-            Ok(Ok(reply)) if reply.ok => FrameReply::ok_with(reply.result.unwrap_or(Value::Null)),
+            Ok(Ok(reply)) if reply.ok => {
+                let result = self.save_generated_garment(session_id, reply.result).await;
+                FrameReply::ok_with(result.unwrap_or(Value::Null))
+            }
             Ok(Ok(reply)) => FrameReply::err(
                 reply
                     .error
@@ -110,6 +112,70 @@ impl HostPlanServer {
                 GENERATOR_CALL_TIMEOUT.as_secs()
             )),
         }
+    }
+
+    /// Write a finished garment into the session's project and report where.
+    ///
+    /// The renderer renders in a canvas it cannot turn into a file, so it sends
+    /// the atlas as base64 and the write happens here, through the same checked
+    /// path the canvas export uses. A failed write is not a failed generation:
+    /// the picture was already handed to the model, so the result is returned
+    /// unchanged with a `save` note saying why no file exists.
+    async fn save_generated_garment(
+        &self,
+        session_id: &str,
+        result: Option<Value>,
+    ) -> Option<Value> {
+        let mut result = result?;
+        let fields = result.as_object_mut()?;
+        let atlas = fields
+            .remove("atlas")
+            .and_then(|value| value.as_str().map(str::to_string));
+        let Some(atlas) = atlas else {
+            return Some(result);
+        };
+        let Some(scope) = self.scope_of(session_id) else {
+            fields.insert(
+                "save".to_string(),
+                serde_json::json!({
+                    "saved": false,
+                    "reason": "this session has no project folder, so there is nowhere to write \
+                               the picture",
+                }),
+            );
+            return Some(result);
+        };
+        let relative = garment_path(fields);
+        let bytes = match decode_data_url(&atlas) {
+            Ok(bytes) => bytes,
+            Err(reason) => {
+                fields.insert(
+                    "save".to_string(),
+                    serde_json::json!({ "saved": false, "reason": reason }),
+                );
+                return Some(result);
+            }
+        };
+        let root = scope.root.clone();
+        let requested = relative.clone();
+        let written = tokio::task::spawn_blocking(move || {
+            crate::acp::host_mcp::canvas_policy::write_project_file(&root, &requested, &bytes)
+        })
+        .await;
+        let note = match written {
+            Ok(Ok(file)) => serde_json::json!({
+                "saved": true,
+                "path": file.absolute.to_string_lossy(),
+                "relative": file.relative,
+            }),
+            Ok(Err(error)) => serde_json::json!({ "saved": false, "reason": error.message }),
+            Err(error) => serde_json::json!({
+                "saved": false,
+                "reason": format!("the write stopped: {error}"),
+            }),
+        };
+        fields.insert("save".to_string(), note);
+        Some(result)
     }
 
     /// Route the renderer's answer to the parked call. Returns `false` when
@@ -165,6 +231,57 @@ impl HostPlanServer {
             },
         );
     }
+}
+
+/// Where a garment is written inside the project, mirroring RobloxKit's
+/// `Documents/RobloxKit/clothing/<slug>.png` so a user who knows one layout
+/// recognises the other.
+fn garment_path(fields: &serde_json::Map<String, Value>) -> String {
+    let kind = fields
+        .get("kind")
+        .and_then(Value::as_str)
+        .unwrap_or("clothing");
+    let name = fields
+        .get("name")
+        .and_then(Value::as_str)
+        .map(slug)
+        .filter(|slug| !slug.is_empty())
+        .unwrap_or_else(|| kind.to_string());
+    format!(".termul/generated/{kind}/{name}.png")
+}
+
+/// Lowercase, `-` for runs of anything else, and empty when nothing usable is
+/// left so the caller falls back to the garment kind.
+fn slug(name: &str) -> String {
+    let mut out = String::new();
+    let mut pending_dash = false;
+    for ch in name.chars().take(40) {
+        if ch.is_ascii_alphanumeric() {
+            if pending_dash && !out.is_empty() {
+                out.push('-');
+            }
+            pending_dash = false;
+            out.push(ch.to_ascii_lowercase());
+        } else {
+            pending_dash = true;
+        }
+    }
+    out
+}
+
+/// The bytes of a `data:image/png;base64,…` URL. The renderer sends the atlas
+/// this way because the renderer cannot reach the project folder itself.
+fn decode_data_url(url: &str) -> Result<Vec<u8>, String> {
+    use base64::Engine as _;
+    let (head, body) = url
+        .split_once(',')
+        .ok_or_else(|| "the picture is not a data URL".to_string())?;
+    if !head.starts_with("data:image/") {
+        return Err("the picture is not an image data URL".to_string());
+    }
+    base64::engine::general_purpose::STANDARD
+        .decode(body)
+        .map_err(|error| format!("the picture is not valid base64: {error}"))
 }
 
 #[cfg(test)]

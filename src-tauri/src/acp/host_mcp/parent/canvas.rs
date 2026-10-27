@@ -26,9 +26,9 @@ pub(super) const LATE_EXPORT_LIMIT: Duration = Duration::from_secs(600);
 
 /// The project a session works in: the router key and the folder exports
 /// are written under (the session's working directory).
-struct SessionScope {
-    project_id: String,
-    root: std::path::PathBuf,
+pub(super) struct SessionScope {
+    pub(super) project_id: String,
+    pub(super) root: std::path::PathBuf,
 }
 
 impl HostPlanServer {
@@ -246,7 +246,7 @@ impl HostPlanServer {
 
     /// The session's project and working directory, read from the session
     /// registry each time: a cached binding could outlive a project change.
-    fn scope_of(&self, session_id: &str) -> Option<SessionScope> {
+    pub(super) fn scope_of(&self, session_id: &str) -> Option<SessionScope> {
         let metadata = self.persistence.as_ref()?.metadata(session_id).ok()?;
         let project_id = metadata.project_id.filter(|project| !project.is_empty())?;
         Some(SessionScope {

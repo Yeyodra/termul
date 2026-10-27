@@ -60,6 +60,18 @@ export interface GenerateClothingResult {
   design?: unknown
   /** `data:image/png;base64,â€¦` of the rendered sheet. */
   image?: string
+  /**
+   * `data:image/png;base64,...` of the flat atlas, which the host writes into
+   * the project and hands back as `save.path`.
+   *
+   * Separate from `image` because the review sheet is an avatar render and is
+   * not uploadable: Roblox wants the atlas itself. The host strips this field
+   * before the model sees the reply, so the bytes never reach the transcript.
+   */
+  atlas?: string
+  kind?: DesignType
+  name?: string
+  save?: { saved: boolean; path?: string; relative?: string; reason?: string }
   /** What the checks found: `ok`, the issue list, size, coverage, colours. */
   report?: unknown
   /** One-line description for a model that cannot see the image. */
@@ -217,12 +229,16 @@ export function readClothingResult(queue: TaskQueue, taskId: string): GenerateCl
   }
   if (task.status === 'done') {
     const built = task.result as { result?: unknown; built?: BuildResult } | null
+    const spec = built?.built?.spec as { type?: DesignType; name?: string } | undefined
     return {
       status: 'done',
       taskId,
       stage: task.stage,
       design: built?.built?.spec ?? built?.result ?? null,
       image: built?.built?.sheet,
+      atlas: built?.built?.template as string | undefined,
+      kind: spec?.type,
+      name: spec?.name,
       report: built?.built?.report,
       layout: built?.built?.layout,
       summary: `${task.title} is ready`

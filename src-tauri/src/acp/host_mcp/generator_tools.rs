@@ -21,8 +21,8 @@ use serde_json::{json, Value};
 /// the server `instructions` to the model, so a tool that renders an artifact
 /// has to say so itself, or an agent reads "generate_clothing" as a file
 /// operation and writes a `.lua` instead.
-pub const DESCRIPTION_TAG: &str = "Termul generator (renders a real Roblox asset in the project; \
-it does not write source files): ";
+pub const DESCRIPTION_TAG: &str = "Termul generator (renders a real Roblox asset into the project; \
+it writes the asset image, never source code): ";
 
 /// The generator section of the session `instructions`.
 ///
@@ -43,12 +43,14 @@ tool with that id rather than calling generate_* again, which would start a seco
 artifact. Do not write .lua files, .obj files or image files to disk to stand in for an asset, \
 and do not hand-author a Roblox instance in place of a generator: these tools produce the \
 artifact and hand it back. A generator that rejects a spec returns the problems it found; pass \
-them back to the user rather than silently retrying with a different idea. Publishing a \
-generated garment is the user's step, not yours: Roblox does not let an app publish classic \
-clothing, so a clothing image has to be uploaded by hand at \
+them back to the user rather than silently retrying with a different idea. A finished garment is \
+written into the project for you: the reply's save.path is the file on disk and save.relative is \
+the same file inside the project, so quote the path to the user instead of writing your own copy. \
+Publishing a generated garment is the user's step, not yours: Roblox does not let an app publish \
+classic clothing, so a clothing image has to be uploaded by hand at \
 https://create.roblox.com/dashboard/creations?activeTab=Shirt (Pants and TShirt for the other \
 two types). Do not stand up a local HTTP server, do not look for an asset-upload tool here, and \
-do not guess at ShirtTemplate: tell the user to upload the picture they were shown, then carry \
+do not guess at ShirtTemplate: tell the user to upload the file at that path, then carry \
 on with whatever they ask next.";
 
 /// The generator part of the session `instructions`.
@@ -178,7 +180,11 @@ fn task_tool(family: &Family) -> Tool {
              arrives as an image content block beside this reply, so look at it; the JSON \
              alongside carries `design` (the spec the engine accepted), `report` (what the \
              checks found, including any region left bare) and `layout` (the render in words, \
-             for when you cannot see pictures). While it is still running the reply carries the \
+             for when you cannot see pictures). Once the artifact exists it is also written \
+             into the project: `save.saved` says whether that worked, `save.path` is the \
+             absolute file to open or upload, `save.relative` is the same file inside the \
+             project, and `save.reason` explains a refusal. Quote those paths rather than \
+             writing the picture out yourself. While it is still running the reply carries the \
              stage the engine is on; poll again rather than starting a second generation.",
             family.noun, family.engine
         ),

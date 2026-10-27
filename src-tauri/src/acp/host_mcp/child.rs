@@ -276,11 +276,18 @@ async fn generator_call(config: ChildConfig, name: String, arguments: Value) -> 
 
 /// A generator reply, with its `image` lifted into a real MCP image block.
 ///
-/// The engines answer with a `data:image/png;base64,â€¦` URL. Leaving it inside
+/// The engines answer with a `data:image/png;base64,...` URL. Leaving it inside
 /// the JSON text means the agent has to decode base64 by hand to see anything,
-/// and in practice it goes looking on disk instead â€” so the bytes become an
+/// and in practice it goes looking on disk instead — so the bytes become an
 /// image content block and the JSON keeps everything else.
+///
+/// `atlas` is dropped here rather than in the engine: the host already consumed
+/// it to write the file, and a second copy of the same bytes in the transcript
+/// costs context and invites the agent to decode it by hand.
 pub(crate) fn generator_result(mut result: serde_json::Value) -> CallToolResult {
+    if let Some(fields) = result.as_object_mut() {
+        fields.remove("atlas");
+    }
     let image = result
         .as_object_mut()
         .and_then(|fields| fields.remove("image"))
