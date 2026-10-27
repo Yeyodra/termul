@@ -95,3 +95,15 @@ export function resolveTarget(type: DesignType, target = 'all'): Region[] {
 
   return regions.filter((region) => region.face === target)
 }
+
+/**
+ * The six faces of one body part, for UV mapping.
+ *
+ * Scoped to the part on purpose: `regionsFor` returns torso before limbs, and
+ * several parts share face names, so a garment-wide `find(face)` hands a sleeve
+ * the torso's atlas rectangle. That is a real bug this function exists to
+ * prevent — it textured both arms with the chest.
+ */
+export function regionsForPart(type: DesignType, part: string): Region[] {
+  return regionsFor(type).filter((region) => region.part === part)
+}

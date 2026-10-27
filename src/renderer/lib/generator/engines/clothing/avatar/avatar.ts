@@ -31,12 +31,14 @@ import {
   MeshStandardMaterial,
   NearestFilter,
   type Object3D,
+  PlaneGeometry,
   SphereGeometry,
   SRGBColorSpace,
   type Texture
 } from 'three'
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js'
 import type { Region } from '../layout'
-import { regionsFor } from '../layout'
+import { regionsForPart } from '../layout'
 import type { DesignType } from '../schema'
 import { type JointPose, poseJoints, type Rig, rigParts } from './rig'
 
@@ -305,7 +307,7 @@ export function buildAvatar({
   for (const part of BODY) {
     const isLeg = part.wears.endsWith('leg')
     const atlas = isLeg ? pants : shirt
-    const regions: Region[] = atlas ? regionsFor(isLeg ? 'pants' : 'shirt') : []
+    const regions: Region[] = atlas ? regionsForPart(isLeg ? 'pants' : 'shirt', part.wears) : []
     const material = atlas ? (isLeg ? pantsMaterial : shirtMaterial) : skinMaterial
 
     const segments = rig === 'R6' ? [[part.name, 1] as const] : SEGMENTS[part.split]
@@ -330,18 +332,16 @@ export function buildAvatar({
     }
   }
 
-  const head = new Mesh(new SphereGeometry(0.9, 24, 18), skinMaterial)
+  const head = new Mesh(new RoundedBoxGeometry(1.2, 1.2, 1.2, 4, 0.28), skinMaterial)
   head.name = 'Head'
-  head.scale.setScalar(1)
   head.position.set(0, 4.62, 0)
   attach(head, 'Head')
 
   const face = new Mesh(
-    new SphereGeometry(0.92, 24, 18, 0, Math.PI * 2, 0, Math.PI / 2),
+    new PlaneGeometry(0.9, 0.9),
     new MeshStandardMaterial({ map: faceTexture(), transparent: true, roughness: 0.9 })
   )
-  face.position.set(0, 4.62, 0.02)
-  face.rotation.x = Math.PI / 2
+  face.position.set(0, 4.62, 0.605)
   attach(face, 'Head')
 
   const setPose = (pose: JointPose): void => {
