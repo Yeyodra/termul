@@ -778,6 +778,7 @@ export const ACP_EVENTS = {
   browserAgentTab: 'acp:browser_agent_tab',
   browserTicketClosed: 'acp:browser_ticket_closed',
   browserStopChanged: 'acp:browser_stop_changed',
+  generatorCall: 'acp:generator_call',
   /** An agent tab's URL, title, loading state or epoch changed. The
    *  desktop pane mirrors the Tauri event of the same name instead. */
   browserTabUpdated: 'acp:browser_tab_updated',

@@ -31,6 +31,7 @@ use serde::Deserialize;
 
 use crate::acp::host_mcp::canvas_skill::{self, GetCanvasStyleInput, ReadCanvasGuideInput};
 use crate::acp::host_mcp::canvas_tools;
+use crate::acp::host_mcp::generator_tools;
 use crate::acp::host_mcp::{
     session_instructions, FrameKind, FrameReply, FrameRequest, TermulAskUserInput,
     TermulPlanInput, TermulSetTitleInput, ENV_AGENT_ID, ENV_PORT, ENV_SESSION_ID, ENV_TOKEN,
@@ -133,6 +134,9 @@ impl TermulPlanServer {
         for tool in canvas_tools::tools() {
             tool_router.add_route(canvas_route(tool));
         }
+        for tool in generator_tools::tools() {
+            tool_router.add_route(generator_route(tool));
+        }
         if let Some(tool) = browser {
             tool_router.add_route(browser_route(tool));
         }
@@ -223,6 +227,51 @@ fn canvas_route(tool: Tool) -> ToolRoute<TermulPlanServer> {
                 .into())
         })
     })
+}
+
+fn generator_route(tool: Tool) -> ToolRoute<TermulPlanServer> {
+    ToolRoute::new_dyn(tool, |context: ToolCallContext<'_, TermulPlanServer>| {
+        let config = context.service.config.clone();
+        let name = context.name.to_string();
+        let arguments = context.arguments.map_or(Value::Null, Value::Object);
+        Box::pin(async move { Ok(generator_call(config, name, arguments).await.into()) })
+    })
+}
+
+/// One generator call: forward the tool name and arguments to the parent,
+/// which routes them to the renderer that runs the engine. A generation
+/// returns a task id at once, so the round trip is short; the read half is
+/// equally short. The renderer owns every timeout the engines need.
+async fn generator_call(config: ChildConfig, name: String, arguments: Value) -> CallToolResult {
+    let request = FrameRequest {
+        generator_tool: Some(name),
+        generator_args: Some(arguments.to_string()),
+        ..frame(&config, FrameKind::Generator)
+    };
+    match exchange_frame(&config, request).await {
+        Ok(FrameReply {
+            ok: true,
+            result: Some(result),
+            ..
+        }) => CallToolResult::structured(result),
+        Ok(FrameReply {
+            ok: true,
+            result: None,
+            ..
+        }) => CallToolResult::structured(serde_json::json!({ "ok": true })),
+        Ok(FrameReply { error, code, .. }) => CallToolResult::structured_error(
+            serde_json::json!({
+                "ok": false,
+                "code": code.unwrap_or_else(|| "generator_error".to_string()),
+                "message": error.unwrap_or_else(|| "the Termul host rejected the call".to_string()),
+            }),
+        ),
+        Err(error) => CallToolResult::structured_error(serde_json::json!({
+            "ok": false,
+            "code": "generator_unreachable",
+            "message": error,
+        })),
+    }
 }
 
 fn browser_route(tool: DescribedTool) -> ToolRoute<TermulPlanServer> {

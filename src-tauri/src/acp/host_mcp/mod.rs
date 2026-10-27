@@ -27,12 +27,16 @@ pub mod canvas_policy;
 pub mod canvas_skill;
 pub mod canvas_tools;
 pub mod child;
+pub mod generator_tools;
 pub mod parent;
 pub mod presence;
 pub mod roblox;
 
 #[cfg(test)]
 mod gateway_harness;
+#[cfg(test)]
+#[path = "generator_e2e_tests.rs"]
+mod generator_e2e_tests;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -90,7 +94,8 @@ bare multi-segment file paths in prose become open-in-editor links too.";
 #[must_use]
 pub fn session_instructions() -> String {
     format!(
-        "{TERMUL_CHAT_INSTRUCTIONS}\n\n{}",
+        "{TERMUL_CHAT_INSTRUCTIONS}\n\n{}\n\n{}",
+        generator_tools::instructions(),
         canvas_tools::instructions()
     )
 }
@@ -156,6 +161,11 @@ pub enum FrameKind {
     /// A figcraft control-protocol call from the canvas `Bridge` backend,
     /// routed to the renderer that holds the session's project canvas.
     Canvas,
+    /// A `generate_*` / `get_*_task` call: the generative engines run in the
+    /// renderer (they need a canvas and the model transport), so the parent
+    /// forwards the call to the renderer holding the session's project and
+    /// waits for its reply.
+    Generator,
 }
 
 /// One option the agent offers in an `ask_user` question.
@@ -351,6 +361,14 @@ pub struct FrameRequest {
     /// The agent tool a `Canvas` frame serves, for the gateway's logs.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub canvas_tool: Option<String>,
+    /// The generator tool name of a `Generator` frame (`generate_clothing`,
+    /// `get_3d_task`, …), verbatim from the agent's call.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub generator_tool: Option<String>,
+    /// The `Generator` frame's tool arguments as JSON text, forwarded
+    /// unparsed so the renderer owns the schema.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub generator_args: Option<String>,
 }
 
 /// Parent reply frame (one per connection). `result` carries the browser

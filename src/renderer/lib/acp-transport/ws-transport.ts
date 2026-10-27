@@ -77,6 +77,7 @@ import { webServerMcpProbe } from '@/lib/web-server-api'
 import { CanvasGatewayClient } from './canvas-gateway-client'
 import { judgeEvent, SyncGate } from './cursor'
 import { toWsEventType } from './event-names'
+import { GeneratorGatewayClient } from './generator-gateway-client'
 import { HOST_GOING_AWAY_CLOSE_CODE, HostOfflineMonitor } from './host-offline'
 import { HOST_SILENCE_LIMIT_MS, HostLiveness } from './liveness'
 import {
@@ -272,6 +273,10 @@ export class WsAcpTransport implements AcpTransport {
   })
   /** The canvas gateway's renderer leg: mount reports and forwarded calls. */
   readonly canvas = new CanvasGatewayClient({
+    request: (type, payload) => this.request(type, payload),
+    isLive: () => this.isSocketLive()
+  })
+  readonly generator = new GeneratorGatewayClient({
     request: (type, payload) => this.request(type, payload),
     isLive: () => this.isSocketLive()
   })

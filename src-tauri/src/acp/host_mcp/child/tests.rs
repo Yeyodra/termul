@@ -686,6 +686,7 @@ async fn tools_list_carries_figcraft_tools_by_name_with_the_canvas_tag() {
             .iter()
             .filter_map(|tool| tool["name"].as_str())
             .filter(|name| !HOST_TOOLS.contains(name))
+            .filter(|name| generator_tools::parse_tool(name).is_none())
             .collect();
         canvas.sort_unstable();
         let mut upstream = figcraft_mcp::TOOL_NAMES.to_vec();
@@ -937,4 +938,64 @@ async fn canvas_tools_answer_canvas_closed_with_the_way_to_open_it() {
         drop(writer);
     })
     .await;
+}
+
+#[tokio::test]
+async fn tools_list_advertises_every_generator_tool_to_the_agent() {
+    with_mcp_session(handshake_config(), |mut writer, mut reader| async move {
+        send_line(
+            &mut writer,
+            r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#,
+        )
+        .await;
+        let reply = read_json_id(&mut reader, 2).await;
+        let listed: Vec<String> = reply["result"]["tools"]
+            .as_array()
+            .expect("tools array")
+            .iter()
+            .filter_map(|tool| tool["name"].as_str().map(str::to_string))
+            .collect();
+        for tool in generator_tools::tools() {
+            let name = tool.name.to_string();
+            assert!(listed.contains(&name), "{name} is advertised: {listed:?}");
+            let entry = reply["result"]["tools"]
+                .as_array()
+                .expect("tools array")
+                .iter()
+                .find(|entry| entry["name"] == tool.name.as_ref())
+                .expect("the entry");
+            assert!(
+                entry["description"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .starts_with(generator_tools::DESCRIPTION_TAG),
+                "{name} carries the tag"
+            );
+            assert!(
+                entry["inputSchema"].is_object(),
+                "{name} has a schema the agent can validate against"
+            );
+        }
+        drop(writer);
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn the_generator_tools_do_not_collide_with_a_host_or_canvas_tool() {
+    let names: Vec<String> = generator_tools::tools()
+        .into_iter()
+        .map(|tool| tool.name.to_string())
+        .collect();
+    for name in &names {
+        assert!(!HOST_TOOLS.contains(&name.as_str()), "{name} is not a host tool");
+        assert!(
+            !figcraft_mcp::TOOL_NAMES.contains(&name.as_str()),
+            "{name} is not a canvas tool"
+        );
+    }
+    let mut sorted = names.clone();
+    sorted.sort_unstable();
+    sorted.dedup();
+    assert_eq!(sorted.len(), names.len(), "no duplicates");
 }

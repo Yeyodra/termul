@@ -43,6 +43,7 @@ import type {
 import type { SessionPayload } from '@/lib/acp-history-persistence'
 import type { AcpRuntimeAvailability } from '@/lib/agents/supported-acp-agents'
 import type { CanvasGatewayClient } from './canvas-gateway-client'
+import type { GeneratorGatewayClient } from './generator-gateway-client'
 import type { WatchClient } from './watch-client'
 
 /**
@@ -443,6 +444,11 @@ export interface AcpTransport {
    * calls), on every carrier.
    */
   readonly canvas?: CanvasGatewayClient
+  /**
+   * The generator gateway's renderer leg: forwarded `generate_*` /
+   * `get_*_task` calls, answered over the same carrier.
+   */
+  readonly generator?: GeneratorGatewayClient
   /**
    * Tell the host this surface read `sessionId` up to `seq` (the newest turn
    * end it showed) of the log incarnation `logEpoch`. Resolves to the shared

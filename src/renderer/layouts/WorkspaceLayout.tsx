@@ -29,8 +29,10 @@ import { WorkspaceLoadingScreen } from '@/layouts/workspace-layout/WorkspaceLoad
 import { WorkspaceMain } from '@/layouts/workspace-layout/WorkspaceMain'
 import { WorkspaceModals } from '@/layouts/workspace-layout/WorkspaceModals'
 import { startCanvasGateway } from '@/lib/canvas-gateway'
+import { startGeneratorGateway } from '@/lib/generator-gateway'
 import { useWebAuthGate } from '@/lib/web-auth-gate'
 import { isWorkspaceRoutePath } from '@/lib/workspace-route'
+import { CLAUDE_AGENT_CONFIG_ID } from '@/stores/claude-account-switch'
 import { useGitSheetStore } from '@/stores/git-sheet-store'
 import {
   useActiveProject,
@@ -78,6 +80,15 @@ export default function WorkspaceLayout(): React.JSX.Element {
   useShellUnreadTracker()
   // This renderer's canvases answer agent canvas calls (spine AD-21).
   useEffect(() => startCanvasGateway(), [])
+  // This renderer runs the agent's generator calls; the engines need a canvas
+  // and an ACP session, neither of which exists in the MCP child.
+  useEffect(() => {
+    if (!activeProject?.path) return
+    return startGeneratorGateway({
+      agentId: CLAUDE_AGENT_CONFIG_ID,
+      cwd: activeProject.path
+    })
+  }, [activeProject?.path])
   const { switchTo: switchProjectFromPalette } = useProjectSwitch('CommandPalette')
 
   const ssh = useSSHWorkspace()

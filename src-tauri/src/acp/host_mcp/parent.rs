@@ -32,8 +32,11 @@ use crate::web::EventSink;
 
 mod ask;
 mod canvas;
+mod generator;
 pub use ask::IdleSignal;
+pub use generator::{GeneratorReplyPayload, EVENT_GENERATOR_CALL};
 use ask::PendingAsk;
+use generator::PendingGenerator;
 
 use crate::acp::host_mcp::canvas::CanvasRouter;
 use crate::acp::host_mcp::presence::Presence;
@@ -102,6 +105,10 @@ pub struct HostPlanServer {
     presence: Arc<Presence>,
     /// The newest export to each project file.
     exports: Arc<canvas::ExportClaims>,
+    /// Generator calls waiting for a renderer's answer, keyed by call id.
+    pending_generators: Mutex<HashMap<u64, PendingGenerator>>,
+    /// Monotonic id source for `Generator` frames.
+    generator_call_seq: std::sync::atomic::AtomicU64,
 }
 
 impl HostPlanServer {
@@ -133,6 +140,8 @@ impl HostPlanServer {
             presence: Presence::new(Arc::clone(canvas.mounts())),
             canvas,
             exports: Arc::default(),
+            pending_generators: Mutex::new(HashMap::new()),
+            generator_call_seq: std::sync::atomic::AtomicU64::new(0),
         });
         let server_for_thread = Arc::clone(&server);
         let (port_tx, port_rx) = std::sync::mpsc::channel::<u16>();
@@ -305,6 +314,7 @@ impl HostPlanServer {
             .remove(real_session_id);
         self.plan_store.drop_session(real_session_id);
         self.cancel_asks_for_session(real_session_id);
+        self.cancel_generator_calls_for_session(real_session_id);
         self.presence.hide(real_session_id);
         // Close agent-controlled browser tabs + drop the consent grant. The
         // host no-ops when no browser feature was used by this session.
@@ -547,6 +557,15 @@ impl HostPlanServer {
                     req.canvas_tool,
                     req.canvas_method,
                     req.canvas_params,
+                )
+                .await
+            }
+            FrameKind::Generator => {
+                self.generator_call(
+                    &auth.agent_id,
+                    &real_session_id,
+                    req.generator_tool,
+                    req.generator_args,
                 )
                 .await
             }

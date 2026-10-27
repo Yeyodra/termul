@@ -150,6 +150,7 @@ pub(super) async fn route_request(req: WsRequest, env: &HandlerEnv) -> WsReply {
         "canvas_mount" => handle_canvas_mount(id, &req.payload, env),
         "canvas_unmount" => handle_canvas_unmount(id, &req.payload, env),
         "canvas_reply" => handle_canvas_reply(id, &req.payload, env),
+        "generator_reply" => handle_generator_reply(id, &req.payload, env),
         // Project registry commands — one command service shared with the
         // HTTP routes and the desktop (`web::project_registry::commands`):
         // each validates, persists to the durable registry, then notifies.

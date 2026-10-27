@@ -74,6 +74,7 @@ import {
 } from '@/lib/acp-api'
 import { AcpConnectionCoordinator, type AcpRecovery } from '@/lib/acp-connection'
 import { getAcpTransport, isTransientAcpTransportError } from '@/lib/acp-transport'
+import type { GeneratorCall } from '@/lib/acp-transport/generator-gateway-client'
 import { noteTurnEndSeq } from '@/lib/chat-read-sync'
 import { logFrontendError } from '@/lib/log-api'
 import { wireBlocksToDisplay } from '@/lib/skills-wire-reverse'
@@ -665,7 +666,10 @@ export function initAcpEventListeners(): () => void {
     ),
     acpApi.onEvent<BrowserStopChangedEvent>(ACP_EVENTS.browserStopChanged, (e) =>
       useAcpStore.getState()._onBrowserStopChanged(e)
-    )
+    ),
+    acpApi.onEvent<GeneratorCall>(ACP_EVENTS.generatorCall, (e) => {
+      void getAcpTransport().generator?.handleCall(e)
+    })
   ]
   return () => {
     historyTornDown = true

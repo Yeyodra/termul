@@ -83,6 +83,10 @@ export const WS_EVENT_TYPES = [
   // contiguous; the title itself reaches the UI through the
   // `session_info_update` that follows it, so clients have no handler for it.
   'local_title_generated',
+  // One generator call forwarded to the renderer that runs the engine. The
+  // renderer answers with the `generator_reply` request; the agent's tool call
+  // stays parked until then.
+  'generator_call',
   // Top-level frame `{ type: 'gap', sid }` (no `seq`): LOSSY events of `sid`
   // were dropped for this connection because it could not keep up. The client
   // installs an atomic snapshot of the session.
@@ -270,7 +274,13 @@ export const WS_REQUEST_TYPES = [
   // `canvas_reply`, each `partial: true` but the last, answered `{ accepted }`.
   'canvas_mount',
   'canvas_unmount',
-  'canvas_reply'
+  'canvas_reply',
+  // The generator gateway's renderer leg. The host forwards an agent's
+  // `generate_*` / `get_*_task` call to this connection as an
+  // `acp:generator_call` event; the renderer runs it and answers with
+  // `generator_reply { callId, ok, result | error }`. `arguments` and `result`
+  // are JSON text, never parsed on the way.
+  'generator_reply'
 ] as const
 
 /** Union of all WS request `type` strings. */
@@ -352,7 +362,8 @@ export const WS_COMMAND_CLASSES: Readonly<
   unwatch: ['read', null],
   canvas_mount: ['idempotent', null],
   canvas_unmount: ['idempotent', null],
-  canvas_reply: ['idempotent', null]
+  canvas_reply: ['idempotent', null],
+  generator_reply: ['idempotent', null]
 }
 
 /** Longest accepted `commandId`, in bytes. Mirrors the Rust `MAX_COMMAND_ID_LEN`. */
@@ -705,6 +716,7 @@ export const WS_EVENT_TIERS: Readonly<Record<WsEventType, ReliabilityTier>> = {
   agent_switch: WS_RELAY_TIERS.RELIABLE,
   // Durable host record that owns a seq — reliable so no seq goes missing.
   local_title_generated: WS_RELAY_TIERS.RELIABLE,
+  generator_call: WS_RELAY_TIERS.RELIABLE,
   // Frames about delivery itself: a gap must reach the client in order, and a
   // heartbeat is never queued, so neither may be a lossy event.
   gap: WS_RELAY_TIERS.RELIABLE,

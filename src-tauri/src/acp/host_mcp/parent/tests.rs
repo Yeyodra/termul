@@ -9,10 +9,29 @@ struct CapturingSink {
     events: StdMutex<Vec<(String, serde_json::Value)>>,
 }
 
+impl CapturingSink {
+    fn of_type(&self, wanted: &str) -> Vec<serde_json::Value> {
+        self.events
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(type_, _)| type_ == wanted)
+            .map(|(_, payload)| payload.clone())
+            .collect()
+    }
+}
+
+/// A server with no sinks: enough to exercise the parked-call bookkeeping
+/// without a renderer or a socket.
+pub(crate) fn test_server() -> Arc<HostPlanServer> {
+    HostPlanServer::start(vec![], None)
+}
+
 impl EventSink for CapturingSink {
     fn emit(&self, event: &crate::web::sink::AcpEvent) {
         if event.type_ == crate::acp::events::EVENT_PLAN_UPDATE
             || event.type_ == crate::acp::events::EVENT_SESSION_INFO_UPDATE
+            || event.type_ == crate::acp::host_mcp::parent::EVENT_GENERATOR_CALL
         {
             self.events
                 .lock()

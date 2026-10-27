@@ -177,6 +177,7 @@ pub const WS_COMMAND_CLASSES: &[(&str, CommandClass)] = &[
     ("canvas_mount", CommandClass::idempotent()),
     ("canvas_unmount", CommandClass::idempotent()),
     ("canvas_reply", CommandClass::idempotent()),
+    ("generator_reply", CommandClass::idempotent()),
 ];
 
 /// The class of a `/ws` request type; `None` for a type the host does not

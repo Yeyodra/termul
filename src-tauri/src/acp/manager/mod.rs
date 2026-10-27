@@ -593,6 +593,16 @@ impl AcpManager {
     pub fn canvas_router(&self) -> Arc<crate::acp::host_mcp::canvas::CanvasRouter> {
         self.host_plan_server.canvas_router()
     }
+
+    /// Route a renderer's answer to a parked `Generator` frame. `false` when
+    /// the call already timed out, was cancelled, or was never issued.
+    pub fn answer_generator_call(
+        &self,
+        reply: crate::acp::host_mcp::parent::GeneratorReplyPayload,
+    ) -> bool {
+        self.host_plan_server.answer_generator_call(reply)
+    }
+
     /// Host-authored durable agent-switch marker (CAP-2): the relay numbers,
     /// persists and delivers it through this manager's sinks, then the flush
     /// is the durability boundary. The relay is the only sink on desktop and on

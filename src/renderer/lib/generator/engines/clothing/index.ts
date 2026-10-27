@@ -13,6 +13,7 @@ export {
   SHEET_SIZE
 } from './layout'
 export { lerpColor, mulberry32, parseColor, patternField, valueNoise } from './pattern'
+export { CLOTHING_SYSTEM_PROMPT } from './prompt'
 export {
   coverage,
   distinctColors,
