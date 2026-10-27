@@ -36,21 +36,31 @@ export interface AskBrainOptions {
   onSend?: (request: { scope: string; messages: Msg[]; system: string }) => void
 }
 
-const ACP_AGENTS = new Set(['claude', 'codex', 'kiro'])
-
-/** Default image capability: the ACP agents that advertise vision. */
+/**
+ * Default image capability: an ACP agent's own `promptCapabilities.image`
+ * decides, which the caller supplies. Without that answer, assume no — a
+ * wrong "yes" sends an image the agent rejects, and the loop pays a retry.
+ */
 export function defaultTakesImages(brain: Brain): boolean {
-  return ACP_AGENTS.has(brain.id)
+  return brain.takesImages === true
 }
 
-/** Fold the system prompt into the first user turn for a non-ACP brain. */
+/**
+ * Fold the system prompt into the first user turn.
+ *
+ * ACP has no system-prompt slot a generator can use, so every agent gets the
+ * prompt prepended to its first message — RobloxKit does the same
+ * (`gen3d:647`). Getting this wrong is silent: the model simply never sees the
+ * schema it was supposed to author against, and answers with whatever else it
+ * can call.
+ */
 export function flattenForBrain(brain: Brain, history: Msg[], system: string): Msg[] {
-  if (ACP_AGENTS.has(brain.id)) return history.map((message) => ({ ...message }))
-
+  void brain
   const [first, ...rest] = history
   if (!first) return [{ role: 'user', text: system }]
+  if (!system.trim()) return history.map((message) => ({ ...message }))
   return [
-    { ...first, text: `${system}\n\n${first.text}` },
+    { ...first, text: `${system}\n\n---\n\n${first.text}` },
     ...rest.map((message) => ({ ...message }))
   ]
 }

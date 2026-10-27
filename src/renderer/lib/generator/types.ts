@@ -61,12 +61,18 @@ export interface Msg {
 
 /** Which model backend answers a turn. */
 export interface Brain {
-  id: 'robloxkit' | 'custom' | 'claude' | 'codex' | 'kiro'
+  id: 'robloxkit' | 'custom' | 'claude' | 'codex' | 'kiro' | 'cursor' | 'gemini' | 'opencode'
   provider?: unknown
   token?: string
   signal?: AbortSignal
   /** `"<placeKey>/<threadId>"`-style session key, e.g. `gen/clothing`. */
   scope?: string
+  /**
+   * Whether this agent accepts pictures, from its own
+   * `promptCapabilities.image`. Absent means unknown, which the loop treats
+   * as "no": a rejected image costs a whole retry round.
+   */
+  takesImages?: boolean
 }
 
 /** One request to the model. Pure text/vision: `tools: []` (`01` §1.4). */

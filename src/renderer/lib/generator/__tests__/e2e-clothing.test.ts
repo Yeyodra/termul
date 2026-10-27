@@ -264,12 +264,34 @@ describe('generate_clothing end to end', () => {
 })
 
 describe('askBrain', () => {
-  it('leaves the history untouched for an ACP brain', async () => {
+  it('folds the system prompt into the first turn for every agent', async () => {
     const history = [{ role: 'user' as const, text: 'hi' }]
     const { transport, sent } = scriptedTransport(['ok'])
     const ask = createAskBrain({ transport })
 
     await ask({ brain: { id: 'claude' }, history, system: 'SYS' })
+
+    expect(sent[0].messages[0].text).toBe('SYS\n\n---\n\nhi')
+  })
+
+  it('folds the prompt for a non-Claude agent too, because every agent here is ACP', async () => {
+    const { transport, sent } = scriptedTransport(['ok'])
+    const ask = createAskBrain({ transport })
+
+    await ask({
+      brain: { id: 'codex' },
+      history: [{ role: 'user', text: 'hi' }],
+      system: 'SYS'
+    })
+
+    expect(sent[0].messages[0].text).toBe('SYS\n\n---\n\nhi')
+  })
+
+  it('leaves the first turn alone when there is no system prompt', async () => {
+    const { transport, sent } = scriptedTransport(['ok'])
+    const ask = createAskBrain({ transport })
+
+    await ask({ brain: { id: 'claude' }, history: [{ role: 'user', text: 'hi' }], system: '  ' })
 
     expect(sent[0].messages[0].text).toBe('hi')
   })
@@ -305,10 +327,18 @@ describe('askBrain', () => {
 })
 
 describe('brainTakesImages', () => {
-  it('defaults to ACP agents only', async () => {
+  it('reports what the agent advertised, never what its name suggests', async () => {
     const takes = createBrainTakesImages()
 
-    expect(await takes({ id: 'claude' })).toBe(true)
+    expect(await takes({ id: 'claude', takesImages: true })).toBe(true)
+    expect(await takes({ id: 'claude', takesImages: false })).toBe(false)
+    expect(await takes({ id: 'codex', takesImages: true })).toBe(true)
+  })
+
+  it('treats an unknown capability as no, so the loop does not pay a retry', async () => {
+    const takes = createBrainTakesImages()
+
+    expect(await takes({ id: 'claude' })).toBe(false)
     expect(await takes({ id: 'custom' })).toBe(false)
   })
 })

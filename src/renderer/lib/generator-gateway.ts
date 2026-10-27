@@ -11,12 +11,8 @@
 import type { AcpTransport } from '@/lib/acp-transport'
 import { getAcpTransport } from '@/lib/acp-transport'
 import { createAcpBrainTransport } from '@/lib/generator/acp-brain-transport'
-import { resolveGeneratorAgentId } from '@/lib/generator/agent-selection'
-import {
-  createAskBrain,
-  createBrainTakesImages,
-  defaultTakesImages
-} from '@/lib/generator/ask-brain'
+import { type GeneratorAgent, resolveGeneratorAgent } from '@/lib/generator/agent-selection'
+import { createAskBrain, createBrainTakesImages } from '@/lib/generator/ask-brain'
 import { CLOTHING_SYSTEM_PROMPT } from '@/lib/generator/engines/clothing'
 import { createGeneratorHandler } from '@/lib/generator/gateway-handler'
 import { TaskQueue } from '@/lib/generator/task-queue'
@@ -29,9 +25,17 @@ export interface GeneratorGatewayOptions {
   system?: string
   /** Defaults to a fresh `TaskQueue` with the ported budgets. */
   queue?: TaskQueue
+  /** Overrides agent resolution (tests). */
+  agent?: () => GeneratorAgent | null
 }
 
-/** Start serving generator calls from this window. Returns the stop. */
+/**
+ * Start serving generator calls from this window. Returns the stop.
+ *
+ * The agent is resolved per call, not once: a chat can switch agent between
+ * two generations, and both the system-prompt fold and the vision gate depend
+ * on which agent is in play.
+ */
 export function startGeneratorGateway(
   options: GeneratorGatewayOptions,
   transport: AcpTransport = getAcpTransport()
@@ -40,23 +44,25 @@ export function startGeneratorGateway(
   if (!gateway) return () => {}
 
   const queue = options.queue ?? new TaskQueue()
-  const brain: Brain = { id: 'claude' }
-  const askBrain = createAskBrain({
-    transport: createAcpBrainTransport({
-      agentId: () => resolveGeneratorAgentId(),
-      cwd: options.cwd
-    })
-  })
-  const brainTakesImages = createBrainTakesImages(defaultTakesImages)
+  const resolve = options.agent ?? (() => resolveGeneratorAgent())
+  const brainOf = (): Brain => {
+    const agent = resolve()
+    return agent ? { id: brainIdOf(agent.id), takesImages: agent.takesImages } : { id: 'custom' }
+  }
 
   gateway.setHandler(
     createGeneratorHandler({
       queue,
       clothing: {
         queue,
-        brain,
-        askBrain,
-        brainTakesImages,
+        brain: brainOf(),
+        askBrain: createAskBrain({
+          transport: createAcpBrainTransport({
+            agentId: () => resolve()?.id ?? null,
+            cwd: options.cwd
+          })
+        }),
+        brainTakesImages: createBrainTakesImages(() => resolve()?.takesImages ?? false),
         system: options.system ?? CLOTHING_SYSTEM_PROMPT
       }
     })
@@ -66,4 +72,20 @@ export function startGeneratorGateway(
     gateway.setHandler(null)
     queue.cancelAll()
   }
+}
+
+/**
+ * Map a runtime agent id onto a `Brain.id`.
+ *
+ * Only used for logging and for the `custom` fallback; the system-prompt fold
+ * no longer branches on it, because every agent here speaks ACP.
+ */
+function brainIdOf(agentId: string): Brain['id'] {
+  if (agentId.includes('claude')) return 'claude'
+  if (agentId.includes('codex')) return 'codex'
+  if (agentId.includes('kiro')) return 'kiro'
+  if (agentId.includes('cursor')) return 'cursor'
+  if (agentId.includes('gemini')) return 'gemini'
+  if (agentId.includes('opencode')) return 'opencode'
+  return 'custom'
 }
