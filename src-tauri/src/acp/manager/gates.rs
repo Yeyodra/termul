@@ -478,20 +478,246 @@ pub(super) fn requests_summarized_thinking(config: &AgentConfig) -> bool {
             .any(|arg| arg.contains("claude-agent-acp"))
 }
 
-/// `_meta.claudeCode.options.thinking` for Claude Agent ACP.
+/// The MCP server name the renderer registers the Roblox Studio bridge under
+/// (`ROBLOX_STUDIO_MCP_ID` in `src/renderer/lib/roblox-studio-mcp.ts:8`). The
+/// ACP `McpServerStdio.name` carries it, and it is also the key the Claude
+/// adapter's `_meta` override must use — the two MUST stay the same string or
+/// the override targets a server the adapter never sees.
+pub(super) const ROBLOX_STUDIO_MCP_NAME: &str = "roblox-studio";
+
+/// Per-session Roblox eager-load shaping: whether this session asked for it and
+/// where `StudioMCP.exe` actually is.
 ///
-/// The adapter copies this object onto the Agent SDK query. `display:
-/// "summarized"` is what makes current Claude models return reasoning text.
-/// Without it, thinking blocks arrive empty and Termul draws no Thought row.
-pub(super) fn summarized_thinking_meta() -> Meta {
-    Meta::from_iter([(
-        "claudeCode".to_string(),
-        serde_json::json!({
-            "options": {
-                "thinking": { "type": "adaptive", "display": "summarized" }
+/// # Why this exists (the ordering trap)
+///
+/// `alwaysLoad` **cannot** ride on the ACP `mcpServers` array: the Claude
+/// adapter projects each entry to `{type, command, args, env}` only
+/// (`acp-agent.js:8518-8528`), so the key is silently dropped there. It must go
+/// on `_meta.claudeCode.options.mcpServers`, which the adapter spreads
+/// unfiltered (`acp-agent.js:8570`).
+///
+/// The adapter then builds its own map as
+/// `{ ...userProvidedOptions.mcpServers, ...mcpServers }` — the ACP array is
+/// spread **last** (`acp-agent.js:8699-8702`). A server present in both places
+/// therefore has its `_meta` entry overwritten by the four-field projection, so
+/// the fix becomes a silent no-op that still passes a naive test. That is why
+/// [`Self::suppress_servers`] must remove the entry whenever [`Self::meta`]
+/// adds it; both are applied together by [`shape_session_request`].
+///
+/// The Studio path is resolved per call because Roblox installs every update
+/// under a new `version-<hash>` directory.
+#[derive(Debug, Clone, Default)]
+pub(super) struct RobloxEagerLoad {
+    /// `Some` only when the eager load is both requested and possible: the
+    /// Roblox project asked for it *and* `StudioMCP.exe` resolved.
+    studio_command: Option<PathBuf>,
+}
+
+impl RobloxEagerLoad {
+    /// Resolve the shaping for one session request.
+    ///
+    /// `requested` is the caller's project decision (the session's project is
+    /// the Roblox project *and* its `mcp_servers` names `roblox-studio`). A
+    /// machine without Studio resolves to an inert value, never an error: a
+    /// session must always start.
+    pub(super) fn resolve(requested: bool) -> Self {
+        if !requested {
+            return Self::default();
+        }
+        Self::from_studio_path(crate::roblox::find_studio_mcp())
+    }
+
+    /// The decision half of [`Self::resolve`], split out so a test can drive the
+    /// no-Studio branch without depending on what this machine has installed.
+    pub(super) fn from_studio_path(path: Option<PathBuf>) -> Self {
+        match path {
+            Some(path) => Self {
+                studio_command: Some(path),
+            },
+            None => {
+                // The path contains the user profile, so it is never logged.
+                log::warn!(
+                    "[acp] Roblox eager-load requested but StudioMCP.exe was not found; \
+                     starting the session with summarized thinking only"
+                );
+                Self::default()
             }
-        }),
-    )])
+        }
+    }
+
+    /// A shaped value for a known Studio path. Test-only: production always
+    /// resolves through [`crate::roblox::find_studio_mcp`].
+    #[cfg(test)]
+    pub(super) fn with_studio_command(path: PathBuf) -> Self {
+        Self {
+            studio_command: Some(path),
+        }
+    }
+
+    pub(super) fn is_active(&self) -> bool {
+        self.studio_command.is_some()
+    }
+
+    /// Test-only shorthand for [`Self::meta_with_place_name`] with no place
+    /// name; production always goes through the shaping functions below.
+    #[cfg(test)]
+    pub(super) fn meta(&self) -> Meta {
+        self.meta_with_place_name(None)
+    }
+
+    /// [`Self::meta`] with the open place's name folded into the instructions.
+    ///
+    /// The instruction block is appended only when the shaping is active: with
+    /// no `StudioMCP.exe` the tools are not connected, so naming them would
+    /// point the agent at tools it cannot call.
+    ///
+    /// `systemPrompt` is the **object** form the adapter spreads at
+    /// `acp-agent.js:8540-8549`. The bare-string form replaces Claude's preset
+    /// prompt outright, which strips the harness, memory and context rules.
+    pub(super) fn meta_with_place_name(&self, place_name: Option<&str>) -> Meta {
+        let mut options = serde_json::Map::new();
+        options.insert(
+            "thinking".to_string(),
+            serde_json::json!({ "type": "adaptive", "display": "summarized" }),
+        );
+        let mut meta = serde_json::Map::new();
+        if let Some(command) = &self.studio_command {
+            let mut servers = serde_json::Map::new();
+            servers.insert(
+                ROBLOX_STUDIO_MCP_NAME.to_string(),
+                serde_json::json!({
+                    "type": "stdio",
+                    "command": command.to_string_lossy(),
+                    "args": [],
+                    "env": {},
+                    // The one field that suppresses tool-schema deferral for
+                    // this server. `alwaysLoad` is a legal
+                    // `McpStdioServerConfig` field (`sdk.d.ts:1369-1383`).
+                    "alwaysLoad": true,
+                }),
+            );
+            options.insert("mcpServers".to_string(), Value::Object(servers));
+            meta.insert(
+                "systemPrompt".to_string(),
+                serde_json::json!({
+                    "append": crate::acp::host_mcp::roblox::instructions::roblox_instructions(place_name),
+                }),
+            );
+        }
+        meta.insert(
+            "claudeCode".to_string(),
+            Value::Object(serde_json::Map::from_iter([(
+                "options".to_string(),
+                Value::Object(options),
+            )])),
+        );
+        Meta::from_iter(meta)
+    }
+
+    /// Drop `roblox-studio` from the ACP list when this session carries the
+    /// `_meta` override. Identity function otherwise, so a non-Roblox session's
+    /// request is unchanged.
+    ///
+    /// See the type-level note: leaving the entry in the array lets the
+    /// adapter's later spread overwrite the `alwaysLoad` copy.
+    pub(super) fn suppress_servers(&self, servers: Vec<McpServer>) -> Vec<McpServer> {
+        if !self.is_active() {
+            return servers;
+        }
+        servers
+            .into_iter()
+            .filter(|server| !is_roblox_studio_server(server))
+            .collect()
+    }
+}
+
+/// `true` for the renderer's Roblox Studio bridge entry, in any transport.
+pub(crate) fn is_roblox_studio_server(server: &McpServer) -> bool {
+    match server {
+        McpServer::Stdio(stdio) => stdio.name == ROBLOX_STUDIO_MCP_NAME,
+        McpServer::Http(http) => http.name == ROBLOX_STUDIO_MCP_NAME,
+        McpServer::Sse(sse) => sse.name == ROBLOX_STUDIO_MCP_NAME,
+        // `McpServer` is `#[non_exhaustive]`: an unknown future transport is
+        // never assumed to be the Roblox entry.
+        _ => false,
+    }
+}
+
+/// The complete request shaping for one `session/new` / `session/load` /
+/// `session/resume` call: the `mcp_servers` list to attach and the `_meta` to
+/// send, if any.
+///
+/// Both halves come out of one function on purpose. Shipping the `_meta` entry
+/// without the array suppression is the ordering trap — a silent no-op — so no
+/// caller is allowed to apply one half without the other.
+///
+/// `wants_claude_meta` is the caller's Claude-adapter detection
+/// ([`requests_summarized_thinking`], via
+/// [`AgentRuntimeProfile::summarize_thinking`]). A non-Claude agent gets no
+/// `_meta` at all and its MCP list passes through untouched.
+pub(super) async fn shape_session_request(
+    wants_claude_meta: bool,
+    roblox: &RobloxEagerLoad,
+    servers: Vec<McpServer>,
+) -> (Vec<McpServer>, Option<Meta>) {
+    shape_session_request_with_place(wants_claude_meta, roblox, servers, resolve_place(roblox).await.as_deref()).await
+}
+
+/// [`shape_session_request`] taking an already-resolved place name, so tests can
+/// exercise the shaping without probing a live Studio.
+pub(super) async fn shape_session_request_with_place(
+    wants_claude_meta: bool,
+    roblox: &RobloxEagerLoad,
+    servers: Vec<McpServer>,
+    place_name: Option<&str>,
+) -> (Vec<McpServer>, Option<Meta>) {
+    if !wants_claude_meta {
+        return (servers, None);
+    }
+    (
+        roblox.suppress_servers(servers),
+        Some(roblox.meta_with_place_name(place_name)),
+    )
+}
+
+/// [`shape_session_request`] for the reopen paths, where an absent client list
+/// (`None`) means "attach nothing" and must stay distinguishable from an empty
+/// one. Same invariant: the suppression is applied only when the `_meta` that
+/// replaces the dropped entry is actually sent, so a non-Claude agent's list
+/// passes through untouched.
+pub(super) async fn shape_session_request_opt(
+    wants_claude_meta: bool,
+    roblox: &RobloxEagerLoad,
+    servers: Option<Vec<McpServer>>,
+) -> (Option<Vec<McpServer>>, Option<Meta>) {
+    shape_session_request_opt_with_place(wants_claude_meta, roblox, servers, resolve_place(roblox).await.as_deref()).await
+}
+
+/// The open place's name, but only when this session is actually shaped: the
+/// probe spawns a `StudioMCP.exe` child, so a non-Roblox session must not pay it.
+async fn resolve_place(roblox: &RobloxEagerLoad) -> Option<String> {
+    if !roblox.is_active() {
+        return None;
+    }
+    crate::acp::host_mcp::roblox::instructions::resolve_place_name().await
+}
+
+/// [`shape_session_request_opt`] taking an already-resolved place name.
+pub(super) async fn shape_session_request_opt_with_place(
+    wants_claude_meta: bool,
+    roblox: &RobloxEagerLoad,
+    servers: Option<Vec<McpServer>>,
+    place_name: Option<&str>,
+) -> (Option<Vec<McpServer>>, Option<Meta>) {
+    let meta = match wants_claude_meta {
+        true => Some(roblox.meta_with_place_name(place_name)),
+        false => None,
+    };
+    let servers = match servers {
+        Some(servers) if meta.is_some() => Some(roblox.suppress_servers(servers)),
+        other => other,
+    };
+    (servers, meta)
 }
 
 impl AgentRuntimeProfile {

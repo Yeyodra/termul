@@ -69,7 +69,7 @@ mod gates;
 mod activity;
 mod close;
 mod exit;
-pub(crate) use gates::{ConfigOptionValue, GatewayAuthInput};
+pub(crate) use gates::{is_roblox_studio_server, ConfigOptionValue, GatewayAuthInput};
 mod history;
 mod native_subagents;
 mod project_binding;
@@ -176,6 +176,13 @@ pub struct SessionCreationContext {
     /// record so a resend finds the session after ledger eviction or a host
     /// restart. Ephemeral sessions are live-only and carry no durable stamp.
     pub command_id: Option<String>,
+    /// Load the Roblox Studio tool schemas eagerly for this session.
+    ///
+    /// Set by the WS handlers when the session's project is the Roblox project
+    /// and its `mcp_servers` names `roblox-studio`; see
+    /// [`crate::acp::manager::shape_session_request`]. Request shaping only —
+    /// nothing here is persisted.
+    pub roblox_studio_eager_load: bool,
 }
 
 /// Commands sent from Tauri command handlers to an agent's driver thread.
@@ -195,6 +202,8 @@ enum AcpCommand {
         worktree_branch: Option<String>,
         additional_directories: Vec<PathBuf>,
         command_id: Option<String>,
+        /// See [`SessionCreationContext::roblox_studio_eager_load`].
+        roblox_studio_eager_load: bool,
         reply: oneshot::Sender<Result<NewSessionOutcome, String>>,
     },
     LoadSession {
@@ -205,6 +214,10 @@ enum AcpCommand {
         /// attaches that list plus the host plan server. An empty vec still
         /// attaches the plan server — a reload with no project servers.
         mcp_servers: Option<Vec<McpServer>>,
+        /// Already resolved (and already applied to `mcp_servers`) by
+        /// `prepare_reopen_mcp`, so the `_meta` emitted here and the array
+        /// suppression there cannot disagree.
+        roblox: RobloxEagerLoad,
         reply: oneshot::Sender<Result<SessionReopenOutcome, String>>,
     },
     ResumeSession {
@@ -213,6 +226,8 @@ enum AcpCommand {
         additional_directories: Vec<PathBuf>,
         /// See [`AcpCommand::LoadSession`].
         mcp_servers: Option<Vec<McpServer>>,
+        /// See [`AcpCommand::LoadSession`].
+        roblox: RobloxEagerLoad,
         reply: oneshot::Sender<Result<SessionReopenOutcome, String>>,
     },
     DeleteSession {
@@ -1089,6 +1104,7 @@ impl AcpManager {
                 worktree_branch: context.worktree_branch,
                 additional_directories,
                 command_id: context.command_id,
+                roblox_studio_eager_load: context.roblox_studio_eager_load,
                 reply,
             })
             .await
@@ -1128,20 +1144,24 @@ impl AcpManager {
         cwd: String,
         additional_directories: Vec<String>,
         mcp_servers: Option<Vec<McpServer>>,
+        roblox_studio_eager_load: bool,
     ) -> Result<SessionReopenOutcome, String> {
         self.reject_session_owned_by_other_mid_turn(agent_id, &session_id)
             .await?;
         let caps = self.capabilities(agent_id)?;
         gate_load_session(&caps)?;
         let directories = filter_additional_directories(&caps, &cwd, &additional_directories);
-        let (mcp_servers, plan_token) =
-            self.prepare_reopen_mcp(agent_id, &session_id.0, &caps, mcp_servers).await?;
+        let roblox = RobloxEagerLoad::resolve(roblox_studio_eager_load);
+        let (mcp_servers, plan_token) = self
+            .prepare_reopen_mcp(agent_id, &session_id.0, &caps, mcp_servers)
+            .await?;
         let tx = self.command_tx(agent_id)?;
         let outcome = send_command(&tx, |reply| AcpCommand::LoadSession {
             session_id,
             cwd,
             additional_directories: directories,
             mcp_servers,
+            roblox,
             reply,
         })
         .await;
@@ -1170,20 +1190,24 @@ impl AcpManager {
         cwd: String,
         additional_directories: Vec<String>,
         mcp_servers: Option<Vec<McpServer>>,
+        roblox_studio_eager_load: bool,
     ) -> Result<SessionReopenOutcome, String> {
         self.reject_session_owned_by_other_mid_turn(agent_id, &session_id)
             .await?;
         let caps = self.capabilities(agent_id)?;
         gate_resume_session(&caps)?;
         let directories = filter_additional_directories(&caps, &cwd, &additional_directories);
-        let (mcp_servers, plan_token) =
-            self.prepare_reopen_mcp(agent_id, &session_id.0, &caps, mcp_servers).await?;
+        let roblox = RobloxEagerLoad::resolve(roblox_studio_eager_load);
+        let (mcp_servers, plan_token) = self
+            .prepare_reopen_mcp(agent_id, &session_id.0, &caps, mcp_servers)
+            .await?;
         let tx = self.command_tx(agent_id)?;
         let outcome = send_command(&tx, |reply| AcpCommand::ResumeSession {
             session_id,
             cwd,
             additional_directories: directories,
             mcp_servers,
+            roblox,
             reply,
         })
         .await;
@@ -1201,6 +1225,12 @@ impl AcpManager {
     /// `Some` prepends the host plan server, injects OAuth headers, and
     /// gates transports. The plan token is bound to the known session id.
     /// The caller drops the token when the reopen fails.
+    ///
+    /// Roblox shaping is deliberately NOT applied here: the suppression and the
+    /// `_meta` that carries `alwaysLoad` must ship together, and only the
+    /// command loop knows whether this agent gets a `_meta` at all
+    /// (`profile.summarize_thinking`). Suppressing here would delete the server
+    /// outright for a non-Claude agent, which never receives the replacement.
     async fn prepare_reopen_mcp(
         &self,
         agent_id: &AgentId,

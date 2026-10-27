@@ -4226,3 +4226,83 @@ fn a_ledgered_request_without_a_command_id_is_refused_and_the_rest_runs_as_befor
         Some("invalid_command_id".to_string())
     );
 }
+
+// ---- Roblox eager-load gating ----
+
+fn roblox_project_summary(id: &str, name: &str) -> crate::web::project_registry::ProjectSummary {
+    crate::web::project_registry::ProjectSummary {
+        id: id.to_string(),
+        name: name.to_string(),
+        color: "blue".to_string(),
+        path: Some("/roblox".to_string()),
+        is_archived: false,
+        is_default: false,
+    }
+}
+
+fn studio_servers() -> Vec<agent_client_protocol::schema::v1::McpServer> {
+    vec![agent_client_protocol::schema::v1::McpServer::Stdio(agent_client_protocol::schema::v1::McpServerStdio::new(
+        "roblox-studio",
+        "/studio/StudioMCP.exe",
+    ))]
+}
+
+#[test]
+fn wants_roblox_eager_load_requires_the_roblox_project_and_the_studio_entry() {
+    let registry = ProjectRegistry::new();
+    registry.set(vec![roblox_project_summary("p-roblox", "Roblox")], None);
+    let servers = studio_servers();
+
+    assert!(wants_roblox_eager_load(
+        &registry,
+        Some("p-roblox"),
+        Some(&servers)
+    ));
+}
+
+#[test]
+fn wants_roblox_eager_load_is_false_for_a_non_roblox_project() {
+    let registry = ProjectRegistry::new();
+    registry.set(vec![roblox_project_summary("p-other", "Proj p-other")], None);
+    let servers = studio_servers();
+
+    assert!(!wants_roblox_eager_load(
+        &registry,
+        Some("p-other"),
+        Some(&servers)
+    ));
+}
+
+#[test]
+fn wants_roblox_eager_load_is_false_without_the_studio_entry() {
+    let registry = ProjectRegistry::new();
+    registry.set(vec![roblox_project_summary("p-roblox", "Roblox")], None);
+    let servers = vec![agent_client_protocol::schema::v1::McpServer::Stdio(
+        agent_client_protocol::schema::v1::McpServerStdio::new("other", "/usr/bin/other"),
+    )];
+
+    assert!(!wants_roblox_eager_load(
+        &registry,
+        Some("p-roblox"),
+        Some(&servers)
+    ));
+    assert!(!wants_roblox_eager_load(
+        &registry,
+        Some("p-roblox"),
+        Some(&[])
+    ));
+}
+
+#[test]
+fn wants_roblox_eager_load_is_false_without_a_project() {
+    let registry = ProjectRegistry::new();
+    registry.set(vec![roblox_project_summary("p-roblox", "Roblox")], None);
+    let servers = studio_servers();
+
+    assert!(!wants_roblox_eager_load(&registry, None, Some(&servers)));
+    assert!(!wants_roblox_eager_load(
+        &registry,
+        Some("unknown-project"),
+        Some(&servers)
+    ));
+}

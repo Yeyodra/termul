@@ -68,7 +68,7 @@ fn claude_agent_requests_summarized_thinking() {
 
 #[test]
 fn summarized_thinking_meta_asks_for_a_visible_summary() {
-    let meta = summarized_thinking_meta();
+    let meta = RobloxEagerLoad::default().meta();
     assert_eq!(
         meta.get("claudeCode")
             .and_then(|value| value.pointer("/options/thinking/type"))
@@ -2198,6 +2198,7 @@ async fn resume_session_rejected_when_other_agent_owns_session_mid_turn() {
             "/tmp".to_string(),
             Vec::new(),
             None,
+            false,
         )
         .await
         .expect_err("resume must be rejected for a mid-turn owner");
@@ -2237,6 +2238,7 @@ async fn resume_session_same_agent_owner_is_not_blocked_by_cross_agent_guard() {
             "/tmp".to_string(),
             Vec::new(),
             None,
+            false,
         )
         .await
         .expect_err("fixture rejects session/resume deliberately");
@@ -2302,6 +2304,7 @@ async fn load_session_rejected_when_other_agent_owns_session_mid_turn() {
             "/tmp".to_string(),
             Vec::new(),
             None,
+            false,
         )
         .await
         .expect_err("load must be rejected for a mid-turn owner");
@@ -2333,6 +2336,7 @@ async fn resume_session_passes_when_owner_is_idle() {
             "/tmp".to_string(),
             Vec::new(),
             None,
+            false,
         )
         .await
         .expect("idle owner must not block the resume");
@@ -2920,4 +2924,224 @@ async fn new_session_injects_a_refreshed_oauth_token() {
         stored.and_then(|token| token.refresh_token).as_deref(),
         Some("stored-refresh")
     );
+}
+
+// ---- Roblox eager-load request shaping ----
+
+fn roblox_and_other_stdio() -> Vec<McpServer> {
+    vec![
+        McpServer::Stdio(McpServerStdio::new(
+            ROBLOX_STUDIO_MCP_NAME,
+            "/studio/StudioMCP.exe",
+        )),
+        McpServer::Stdio(McpServerStdio::new("other", "/usr/bin/other")),
+    ]
+}
+
+fn studio_meta_pointer(meta: &Meta, pointer: &str) -> Option<Value> {
+    meta.get("claudeCode")
+        .and_then(|value| value.pointer(pointer))
+        .cloned()
+}
+
+#[test]
+fn active_roblox_eager_load_merges_thinking_and_always_load_into_one_meta() {
+    let command = PathBuf::from("/studio/StudioMCP.exe");
+    let roblox = RobloxEagerLoad::with_studio_command(command.clone());
+    let meta = roblox.meta();
+    assert_eq!(
+        studio_meta_pointer(&meta, "/options/thinking/type").and_then(|value| value.as_str().map(str::to_string)),
+        Some("adaptive".to_string())
+    );
+    assert_eq!(
+        studio_meta_pointer(&meta, "/options/mcpServers/roblox-studio/alwaysLoad")
+            .and_then(|value| value.as_bool()),
+        Some(true)
+    );
+    let expected = command.to_string_lossy().into_owned();
+    assert_eq!(
+        studio_meta_pointer(&meta, "/options/mcpServers/roblox-studio/command")
+            .and_then(|value| value.as_str().map(str::to_string)),
+        Some(expected)
+    );
+}
+
+/// The ordering trap, both halves at once: the adapter spreads the ACP
+/// `mcpServers` array AFTER `_meta`, so a server left in the array overwrites
+/// the `alwaysLoad` copy and the fix becomes a silent no-op. Either half alone
+/// still passes, which is exactly why this asserts them together.
+#[test]
+fn suppress_servers_drops_the_studio_entry_and_meta_still_carries_always_load() {
+    let roblox = RobloxEagerLoad::with_studio_command(PathBuf::from("/studio/StudioMCP.exe"));
+    let suppressed = roblox.suppress_servers(roblox_and_other_stdio());
+    assert_eq!(suppressed.len(), 1, "only the Roblox entry is dropped");
+    assert!(!suppressed.iter().any(is_roblox_studio_server));
+    assert!(suppressed
+        .iter()
+        .any(|server| matches!(server, McpServer::Stdio(stdio) if stdio.name == "other")));
+    assert_eq!(
+        studio_meta_pointer(&roblox.meta(), "/options/mcpServers/roblox-studio/alwaysLoad")
+            .and_then(|value| value.as_bool()),
+        Some(true)
+    );
+}
+
+#[test]
+fn inert_roblox_eager_load_keeps_thinking_and_leaves_servers_untouched() {
+    let roblox = RobloxEagerLoad::default();
+    let meta = roblox.meta();
+    assert_eq!(
+        studio_meta_pointer(&meta, "/options/thinking/type").and_then(|value| value.as_str().map(str::to_string)),
+        Some("adaptive".to_string())
+    );
+    assert!(
+        studio_meta_pointer(&meta, "/options/mcpServers").is_none(),
+        "an inert value must not advertise a Studio server"
+    );
+    let untouched = roblox.suppress_servers(roblox_and_other_stdio());
+    assert_eq!(untouched.len(), 2);
+    assert!(untouched.iter().any(is_roblox_studio_server));
+}
+
+#[tokio::test]
+async fn non_claude_agents_get_an_unchanged_server_list_and_no_meta() {
+    let roblox = RobloxEagerLoad::with_studio_command(PathBuf::from("/studio/StudioMCP.exe"));
+    let (servers, meta) =
+        shape_session_request_with_place(false, &roblox, roblox_and_other_stdio(), None).await;
+    assert!(meta.is_none());
+    assert_eq!(servers.len(), 2);
+    assert!(
+        servers.iter().any(is_roblox_studio_server),
+        "a non-Claude agent never receives the _meta replacement, so its list must not be suppressed"
+    );
+}
+
+#[tokio::test]
+async fn reopen_shaping_keeps_an_absent_server_list_absent() {
+    let roblox = RobloxEagerLoad::with_studio_command(PathBuf::from("/studio/StudioMCP.exe"));
+    let (servers, meta) =
+        shape_session_request_opt_with_place(true, &roblox, None, Some("My Place")).await;
+    assert!(servers.is_none());
+    assert!(meta.is_some());
+
+    let (suppressed, meta) = shape_session_request_opt_with_place(
+        true,
+        &roblox,
+        Some(roblox_and_other_stdio()),
+        Some("My Place"),
+    )
+    .await;
+    assert_eq!(suppressed.map(|servers| servers.len()), Some(1));
+    assert!(meta.is_some());
+
+    let (untouched, meta) = shape_session_request_opt_with_place(
+        false,
+        &roblox,
+        Some(roblox_and_other_stdio()),
+        None,
+    )
+    .await;
+    assert_eq!(untouched.map(|servers| servers.len()), Some(2));
+    assert!(meta.is_none());
+}
+
+#[test]
+fn active_roblox_meta_appends_the_instruction_block() {
+    let roblox = RobloxEagerLoad::with_studio_command(PathBuf::from("/studio/StudioMCP.exe"));
+    let meta = roblox.meta_with_place_name(Some("My Place"));
+    let append = meta
+        .get("systemPrompt")
+        .and_then(|value| value.get("append"))
+        .and_then(Value::as_str)
+        .expect("an active Roblox session appends instructions");
+    assert!(append.contains("execute_luau"));
+    assert!(append.contains("ToolSearch"));
+    assert!(append.contains(".lua"));
+    assert!(append.contains("My Place"));
+}
+
+#[test]
+fn append_is_an_additive_object_never_a_replacement_string() {
+    let roblox = RobloxEagerLoad::with_studio_command(PathBuf::from("/studio/StudioMCP.exe"));
+    let meta = roblox.meta_with_place_name(None);
+    let system_prompt = meta.get("systemPrompt").expect("systemPrompt present");
+    assert!(
+        system_prompt.is_object(),
+        "a bare string replaces Claude's preset prompt outright"
+    );
+    assert!(system_prompt.get("append").is_some());
+    assert!(
+        system_prompt.get("type").is_none(),
+        "the adapter locks type itself; a client value would collide"
+    );
+    assert!(system_prompt.get("preset").is_none());
+}
+
+#[test]
+fn thinking_always_load_and_the_append_coexist_in_one_meta() {
+    let roblox = RobloxEagerLoad::with_studio_command(PathBuf::from("/studio/StudioMCP.exe"));
+    let meta = roblox.meta_with_place_name(Some("My Place"));
+    assert_eq!(
+        studio_meta_pointer(&meta, "/options/thinking/type").and_then(|value| {
+            value.as_str().map(str::to_string)
+        }),
+        Some("adaptive".to_string())
+    );
+    assert_eq!(
+        studio_meta_pointer(&meta, "/options/mcpServers/roblox-studio/alwaysLoad")
+            .and_then(|value| value.as_bool()),
+        Some(true)
+    );
+    assert!(meta
+        .get("systemPrompt")
+        .and_then(|value| value.get("append"))
+        .and_then(Value::as_str)
+        .is_some_and(|text| !text.is_empty()));
+}
+
+#[test]
+fn inert_roblox_meta_appends_nothing() {
+    let meta = RobloxEagerLoad::default().meta_with_place_name(Some("My Place"));
+    assert!(
+        meta.get("systemPrompt").is_none(),
+        "with no Studio the tools are disconnected, so naming them would mislead the agent"
+    );
+    assert_eq!(
+        studio_meta_pointer(&meta, "/options/thinking/type").and_then(|value| {
+            value.as_str().map(str::to_string)
+        }),
+        Some("adaptive".to_string())
+    );
+}
+
+#[test]
+fn append_without_a_place_name_has_no_dangling_placeholder() {
+    let roblox = RobloxEagerLoad::with_studio_command(PathBuf::from("/studio/StudioMCP.exe"));
+    let meta = roblox.meta_with_place_name(None);
+    let append = meta
+        .get("systemPrompt")
+        .and_then(|value| value.get("append"))
+        .and_then(Value::as_str)
+        .expect("append present");
+    assert!(!append.is_empty());
+    assert!(!append.contains("\"\""));
+    assert!(!append.contains("(unknown)"));
+}
+
+#[test]
+fn a_machine_without_studio_still_gets_a_working_thinking_meta() {
+    let roblox = RobloxEagerLoad::from_studio_path(None);
+    assert!(!roblox.is_active());
+    assert!(
+        roblox.suppress_servers(roblox_and_other_stdio()).len() == 2,
+        "with no Studio the Roblox entry must stay in the ACP list"
+    );
+    let meta = roblox.meta_with_place_name(None);
+    assert_eq!(
+        studio_meta_pointer(&meta, "/options/thinking/type")
+            .and_then(|value| value.as_str().map(str::to_string)),
+        Some("adaptive".to_string())
+    );
+    assert!(meta.get("systemPrompt").is_none());
+    assert!(studio_meta_pointer(&meta, "/options/mcpServers").is_none());
 }

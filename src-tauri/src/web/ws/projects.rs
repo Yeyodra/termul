@@ -48,6 +48,34 @@ pub(super) fn resolve_session_project(
     }
 }
 
+/// Display name the renderer gives the Roblox project
+/// (`ROBLOX_PROJECT_NAME` in `src/renderer/lib/roblox-studio-mcp.ts:9`).
+pub(super) const ROBLOX_PROJECT_NAME: &str = "Roblox";
+
+/// Whether this session should ask the Claude adapter to load the Roblox Studio
+/// tool schemas eagerly. Both halves must hold: the project is the Roblox
+/// project (matched by display name, not path) and a `roblox-studio` MCP entry
+/// is attached. Anything unknown is `false`, which yields an unchanged request.
+pub(super) fn wants_roblox_eager_load(
+    registry: &ProjectRegistry,
+    project_id: Option<&str>,
+    mcp_servers: Option<&[agent_client_protocol::schema::v1::McpServer]>,
+) -> bool {
+    let Some(project_id) = project_id else {
+        return false;
+    };
+    let is_roblox_project = registry
+        .snapshot()
+        .projects
+        .iter()
+        .any(|project| project.id == project_id && project.name == ROBLOX_PROJECT_NAME);
+    is_roblox_project
+        && mcp_servers
+            .unwrap_or_default()
+            .iter()
+            .any(crate::acp::manager::is_roblox_studio_server)
+}
+
 pub(super) async fn handle_create_session(
     id: String,
     payload: &Value,
@@ -107,6 +135,8 @@ pub(super) async fn handle_create_session(
         );
     }
     let was_active = registry.is_active(&project_id);
+    let roblox_studio_eager_load =
+        wants_roblox_eager_load(registry, Some(&project_id), Some(&parsed.mcp_servers));
     match acp
         .new_session_with_context(
             &parsed.agent_id,
@@ -118,6 +148,7 @@ pub(super) async fn handle_create_session(
                 promotable: parsed.promotable,
                 additional_directories: parsed.additional_directories,
                 command_id,
+                roblox_studio_eager_load,
                 ..Default::default()
             },
         )
@@ -368,6 +399,7 @@ pub(super) async fn handle_load_session(
     id: String,
     payload: &Value,
     acp: &Arc<AcpManager>,
+    registry: &Arc<ProjectRegistry>,
 ) -> WsReply {
     let parsed: LoadResumeSessionPayload = match serde_json::from_value(payload.clone()) {
         Ok(p) => p,
@@ -379,6 +411,9 @@ pub(super) async fn handle_load_session(
             )
         }
     };
+    let project_id = registry.find_by_path(&parsed.cwd);
+    let roblox_studio_eager_load =
+        wants_roblox_eager_load(registry, project_id.as_deref(), parsed.mcp_servers.as_deref());
     match acp
         .load_session(
             &parsed.agent_id,
@@ -386,6 +421,7 @@ pub(super) async fn handle_load_session(
             parsed.cwd,
             parsed.additional_directories,
             parsed.mcp_servers,
+            roblox_studio_eager_load,
         )
         .await
     {

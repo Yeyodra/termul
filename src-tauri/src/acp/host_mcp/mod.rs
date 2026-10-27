@@ -29,6 +29,7 @@ pub mod canvas_tools;
 pub mod child;
 pub mod parent;
 pub mod presence;
+pub mod roblox;
 
 #[cfg(test)]
 mod gateway_harness;
