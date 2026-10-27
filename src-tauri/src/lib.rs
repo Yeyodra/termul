@@ -1923,6 +1923,7 @@ pub fn run() {
             roblox::roblox_studio_path,
             roblox::roblox_workspace_path,
             roblox::live_status::roblox_studio_live_status,
+            roblox::live_status::roblox_place_key,
             window_visibility::is_wayland_session,
             suspend_app_menu,
             restore_app_menu,

@@ -43,3 +43,15 @@ export const IMAGE_MIME_ALLOW = ['image/png', 'image/jpeg', 'image/webp', 'image
 
 /** Downscale quality when normalizing a review image (`gen3d:377`). */
 export const REVIEW_JPEG_QUALITY = 0.9
+
+/** Default background job concurrency (`tasks:20`, clamped `1..4` at `:41-43`). */
+export const TASK_CONCURRENCY = 2
+
+/** Finished tasks kept in the persisted log (`tasks:20`). */
+export const MAX_FINISHED_TASKS = 60
+
+/** Task results are cut at this many characters, with a notice (`tasks:97-107`). */
+export const TASK_RESULT_CAP = 20000
+
+/** Debounce before a task-state write reaches the store (`tasks:73-75`). */
+export const TASK_SAVE_DEBOUNCE_MS = 600

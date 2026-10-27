@@ -206,15 +206,6 @@ pub struct StudioSnapshot {
     pub studios: Vec<StudioEntry>,
 }
 
-impl StudioSnapshot {
-    /// The place name to show, when a Studio instance reports one. A reachable
-    /// Studio with no place loaded yields `None`, not an empty snapshot.
-    #[must_use]
-    pub fn place_name(&self) -> Option<String> {
-        self.studios.first().and_then(|studio| studio.name.clone())
-    }
-}
-
 impl StudioSession {
     /// Spawn `exe` and complete the MCP handshake. The child's stderr is
     /// discarded so a chatty proxy cannot pollute Termul's log.
@@ -259,6 +250,25 @@ impl StudioSession {
     /// Studios the proxy can reach.
     pub async fn list_studios(&mut self) -> Result<Vec<StudioEntry>, String> {
         self.client.list_studios().await
+    }
+
+    /// Call one MCP tool and hand back the raw reply envelope, not the payload.
+    ///
+    /// `list_studios` above is the only tool this module parses itself; the
+    /// place probe parses its own reply in `place_key`.
+    pub async fn call_tool(
+        &mut self,
+        name: &str,
+        arguments: Value,
+    ) -> Result<Value, String> {
+        let reply = self
+            .client
+            .request("tools/call", json!({ "name": name, "arguments": arguments }))
+            .await?;
+        if let Some(error) = reply.get("error") {
+            return Err(format!("{name} failed: {error}"));
+        }
+        Ok(reply)
     }
 
     /// Whether the child is still alive, without reaping it.
@@ -363,13 +373,17 @@ pub(crate) fn entries_from_document(document: &Value) -> Vec<StudioEntry> {
         .collect()
 }
 
-/// Probe through the process-wide session, spawning it on first use and
-/// respawning it when the child died.
-pub async fn probe(exe: &std::path::Path) -> Result<StudioSnapshot, String> {
+/// Borrow the process-wide session for a multi-step conversation, spawning it on
+/// first use and replacing it when the child died.
+///
+/// The guard is held for the whole borrow, so two callers cannot interleave
+/// requests on one JSON-RPC pipe. Keep the work short: the lamp polls through
+/// the same mutex.
+pub async fn probe_session(
+    exe: &std::path::Path,
+) -> Result<tokio::sync::MutexGuard<'static, Option<StudioSession>>, String> {
     let mut guard = SESSION.lock().await;
 
-    // A session whose child exited (Studio closed, proxy crashed) is replaced
-    // rather than retried, so the next tick recovers without a chat restart.
     if let Some(session) = guard.as_mut() {
         if !session.is_alive() {
             log::info!("[roblox] Studio MCP child exited; respawning");
@@ -380,6 +394,17 @@ pub async fn probe(exe: &std::path::Path) -> Result<StudioSnapshot, String> {
     if guard.is_none() {
         *guard = Some(StudioSession::spawn(exe).await?);
     }
+
+    if guard.is_none() {
+        return Err("Studio MCP session is unavailable".to_string());
+    }
+    Ok(guard)
+}
+
+/// Probe through the process-wide session, spawning it on first use and
+/// respawning it when the child died.
+pub async fn probe(exe: &std::path::Path) -> Result<StudioSnapshot, String> {
+    let mut guard = probe_session(exe).await?;
 
     let session = guard
         .as_mut()
