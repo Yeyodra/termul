@@ -82,13 +82,68 @@ fn the_generate_tools_accept_an_optional_prompt_and_spec() {
             "{} prompt presence matches the family",
             tool.name
         );
-        let required = schema.get("required").and_then(Value::as_array);
-        assert!(
-            required.is_none_or(|list| list.is_empty()),
-            "{} requires nothing",
-            tool.name
-        );
     }
+}
+
+#[test]
+fn a_family_with_a_kind_requires_it_as_a_top_level_argument() {
+    for family in FAMILIES {
+        let tool = generate_tool(family);
+        let schema = &tool.input_schema;
+        let required: Vec<String> = schema
+            .get("required")
+            .and_then(Value::as_array)
+            .map(|list| {
+                list.iter()
+                    .filter_map(Value::as_str)
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        match kind_field(family) {
+            Some((field, values)) => {
+                assert!(
+                    required.contains(&field.to_string()),
+                    "{} must require {field}: the validator reads it from the call, not the spec",
+                    tool.name
+                );
+                let property = schema["properties"][field].clone();
+                assert_eq!(property["type"], "string");
+                let listed: Vec<String> = property["enum"]
+                    .as_array()
+                    .expect("enum")
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(str::to_string)
+                    .collect();
+                assert_eq!(listed, values, "{} enum matches the engine", tool.name);
+                assert!(
+                    tool.description.as_deref().unwrap_or("").contains(field),
+                    "{} names {field} in its description too",
+                    tool.name
+                );
+            }
+            None => assert!(
+                required.is_empty(),
+                "{} requires nothing",
+                tool.name
+            ),
+        }
+    }
+}
+
+#[test]
+fn the_clothing_type_enum_matches_the_renderer_validator() {
+    let tool = generate_tool(&FAMILIES[0]);
+    let listed: Vec<String> = tool.input_schema["properties"]["type"]["enum"]
+        .as_array()
+        .expect("enum")
+        .iter()
+        .filter_map(Value::as_str)
+        .map(str::to_string)
+        .collect();
+    assert_eq!(listed, vec!["shirt", "pants", "tshirt"]);
 }
 
 #[test]

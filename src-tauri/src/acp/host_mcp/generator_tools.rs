@@ -75,9 +75,48 @@ const FAMILIES: &[Family] = &[
     Family { engine: "cutscene", noun: "cutscene timeline as Luau", accepts_prompt: true },
 ];
 
+/// The garment types the clothing engine validates against. Must match
+/// `DESIGN_TYPES` in the renderer's `engines/clothing/schema.ts`: the tool
+/// requires a value from this list, so a mismatch makes the tool uncallable.
+const CLOTHING_TYPES: &[&str] = &["shirt", "pants", "tshirt"];
+
+/// The enum a family needs at the top level, if any.
+///
+/// The renderer's validator reads the garment type from the tool call, not
+/// from the spec, so it has to be an argument the agent can actually set.
+fn kind_field(family: &Family) -> Option<(&'static str, &'static [&'static str])> {
+    match family.engine {
+        "clothing" => Some(("type", CLOTHING_TYPES)),
+        _ => None,
+    }
+}
+
+/// A sentence naming the required argument, so a description-only client
+/// still learns it exists.
+fn kind_hint(family: &Family) -> String {
+    match kind_field(family) {
+        Some((field, values)) => {
+            format!(" Required argument `{field}`: one of {}.", values.join(", "))
+        }
+        None => String::new(),
+    }
+}
+
 /// `generate_<engine>` for one family.
 fn generate_tool(family: &Family) -> Tool {
     let mut properties = serde_json::Map::new();
+    let mut required: Vec<&str> = Vec::new();
+    if let Some((field, values)) = kind_field(family) {
+        properties.insert(
+            field.to_string(),
+            json!({
+                "type": "string",
+                "enum": values,
+                "description": format!("Which {} to make. Required.", family.engine)
+            }),
+        );
+        required.push(field);
+    }
     if family.accepts_prompt {
         properties.insert(
             "prompt".to_string(),
@@ -98,8 +137,10 @@ fn generate_tool(family: &Family) -> Tool {
     let description = format!(
         "Generate a {}. Returns a task id at once; the artifact takes minutes, so poll \
          `get_{}_task` with that id instead of calling this again. An invalid spec comes back \
-         as a list of problems to fix, not as a crash.",
-        family.noun, family.engine
+         as a list of problems to fix, not as a crash.{}",
+        family.noun,
+        family.engine,
+        kind_hint(family)
     );
 
     Tool::new(
@@ -108,7 +149,7 @@ fn generate_tool(family: &Family) -> Tool {
         json!({
             "type": "object",
             "properties": Value::Object(properties),
-            "required": [],
+            "required": required,
         })
         .as_object()
         .cloned()

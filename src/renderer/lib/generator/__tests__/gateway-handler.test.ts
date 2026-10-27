@@ -50,9 +50,20 @@ describe('createGeneratorHandler', () => {
     const missing = await handler(call('generate_clothing', {}))
     expect(missing.ok).toBe(false)
     expect(missing.error).toContain('"shirt", "pants" or "tshirt"')
+    expect(missing.error).toContain('not read from inside `spec`')
 
     const unknown = await handler(call('generate_clothing', { type: 'hoodie' }))
     expect(unknown.ok).toBe(false)
+  })
+
+  it('accepts the garment type from inside a spec, so a reasonable guess still works', async () => {
+    const { handler } = harness()
+
+    const reply = await handler(
+      call('generate_clothing', { spec: { type: 'pants', layers: [{ kind: 'solid' }] } })
+    )
+
+    expect(reply.ok).toBe(true)
   })
 
   it('reports an unknown task id instead of throwing', async () => {

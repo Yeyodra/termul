@@ -588,7 +588,22 @@ impl RobloxEagerLoad {
     /// `systemPrompt` is the **object** form the adapter spreads at
     /// `acp-agent.js:8540-8549`. The bare-string form replaces Claude's preset
     /// prompt outright, which strips the harness, memory and context rules.
+    #[cfg(test)]
     pub(super) fn meta_with_place_name(&self, place_name: Option<&str>) -> Meta {
+        self.meta_with_place_name_and_env(place_name, &[])
+    }
+
+    /// [`Self::meta_with_place_name`] taking the host child's environment.
+    ///
+    /// The `termul` entry replaces the ACP array's copy, so it must carry the
+    /// same env or the child cannot reach the parent: it exits with a missing
+    /// variable and the generator tools never register. An empty env here is
+    /// therefore not "no config", it is a broken server.
+    pub(super) fn meta_with_place_name_and_env(
+        &self,
+        place_name: Option<&str>,
+        host_env: &[EnvVariable],
+    ) -> Meta {
         let mut options = serde_json::Map::new();
         options.insert(
             "thinking".to_string(),
@@ -615,13 +630,17 @@ impl RobloxEagerLoad {
             // shape; without it the generator tools are advertised by name but
             // deferred, and an agent cannot call what it has no schema for.
             if let Some(exe) = &self.host_exe {
+                let env: serde_json::Map<String, Value> = host_env
+                    .iter()
+                    .map(|entry| (entry.name.clone(), Value::String(entry.value.clone())))
+                    .collect();
                 servers.insert(
                     HOST_MCP_NAME.to_string(),
                     serde_json::json!({
                         "type": "stdio",
                         "command": exe.to_string_lossy(),
                         "args": [crate::acp::host_mcp::CHILD_ARG],
-                        "env": {},
+                        "env": Value::Object(env),
                         "alwaysLoad": true,
                     }),
                 );
@@ -718,10 +737,25 @@ pub(super) async fn shape_session_request_with_place(
     if !wants_claude_meta {
         return (servers, None);
     }
+    let host_env = host_server_env(&servers);
     (
         roblox.suppress_servers(servers),
-        Some(roblox.meta_with_place_name(place_name)),
+        Some(roblox.meta_with_place_name_and_env(place_name, &host_env)),
     )
+}
+
+/// The environment the host `termul` entry carries in the ACP array.
+///
+/// Read before the entry is suppressed, because `_meta` replaces it: without
+/// these variables the child cannot reach the parent and exits.
+fn host_server_env(servers: &[McpServer]) -> Vec<EnvVariable> {
+    servers
+        .iter()
+        .find_map(|server| match server {
+            McpServer::Stdio(stdio) if stdio.name == HOST_MCP_NAME => Some(stdio.env.clone()),
+            _ => None,
+        })
+        .unwrap_or_default()
 }
 
 /// [`shape_session_request`] for the reopen paths, where an absent client list
@@ -754,7 +788,10 @@ pub(super) async fn shape_session_request_opt_with_place(
     place_name: Option<&str>,
 ) -> (Option<Vec<McpServer>>, Option<Meta>) {
     let meta = match wants_claude_meta {
-        true => Some(roblox.meta_with_place_name(place_name)),
+        true => {
+            let host_env = servers.as_deref().map(host_server_env).unwrap_or_default();
+            Some(roblox.meta_with_place_name_and_env(place_name, &host_env))
+        }
         false => None,
     };
     let servers = match servers {

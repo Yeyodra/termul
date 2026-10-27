@@ -85,18 +85,25 @@ async function dispatch(deps: GeneratorHandlerDeps, call: GeneratorCall): Promis
 
   if (call.tool === 'generate_clothing') {
     const args = parseArguments(call.arguments)
-    const type = args.type
+    // The garment type is read from the tool call, because the engine's
+    // validator takes it as an argument rather than from the spec. A spec that
+    // carries its own `type` is accepted too, so an agent that put it inside
+    // `spec` is not punished for a reasonable guess.
+    const spec = args.spec as Record<string, unknown> | undefined
+    const type = args.type ?? spec?.type
     if (type !== 'shirt' && type !== 'pants' && type !== 'tshirt') {
       return {
         callId: call.callId,
         ok: false,
-        error: 'generate_clothing needs a type of "shirt", "pants" or "tshirt"'
+        error:
+          'generate_clothing needs `type` as a top-level argument: one of "shirt", "pants" ' +
+          'or "tshirt". It is not read from inside `spec`.'
       }
     }
     const accepted = queueGenerateClothing(deps.clothing, {
       type,
       prompt: typeof args.prompt === 'string' ? args.prompt : undefined,
-      design: args.spec
+      design: spec
     })
     return { callId: call.callId, ok: true, result: accepted }
   }

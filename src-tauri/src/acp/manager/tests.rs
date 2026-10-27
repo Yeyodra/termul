@@ -3198,3 +3198,51 @@ async fn the_host_server_leaves_the_acp_array_so_the_meta_flag_survives() {
         );
     }
 }
+
+#[tokio::test]
+async fn the_host_meta_entry_carries_the_childs_environment() {
+    let roblox = RobloxEagerLoad::with_studio_command(PathBuf::from("/studio/StudioMCP.exe"));
+    let servers = vec![McpServer::Stdio(
+        McpServerStdio::new("termul", "/app/termul-manager")
+            .args(vec![crate::acp::host_mcp::CHILD_ARG.to_string()])
+            .env(vec![
+                EnvVariable::new(crate::acp::host_mcp::ENV_PORT, "4321"),
+                EnvVariable::new(crate::acp::host_mcp::ENV_TOKEN, "tok"),
+                EnvVariable::new(crate::acp::host_mcp::ENV_SESSION_ID, "sid"),
+                EnvVariable::new(crate::acp::host_mcp::ENV_AGENT_ID, "agent"),
+            ]),
+    )];
+
+    let (_, meta) = shape_session_request_with_place(true, &roblox, servers, None).await;
+    let meta = meta.expect("meta");
+    for (name, value) in [
+        (crate::acp::host_mcp::ENV_PORT, "4321"),
+        (crate::acp::host_mcp::ENV_TOKEN, "tok"),
+        (crate::acp::host_mcp::ENV_SESSION_ID, "sid"),
+        (crate::acp::host_mcp::ENV_AGENT_ID, "agent"),
+    ] {
+        assert_eq!(
+            studio_meta_pointer(&meta, &format!("/options/mcpServers/termul/env/{name}"))
+                .and_then(|value| value.as_str().map(str::to_string)),
+            Some(value.to_string()),
+            "{name} must reach the child, or it exits and no generator tool registers"
+        );
+    }
+}
+
+#[tokio::test]
+async fn the_host_meta_entry_keeps_its_env_on_the_reopen_path() {
+    let roblox = RobloxEagerLoad::with_studio_command(PathBuf::from("/studio/StudioMCP.exe"));
+    let servers = vec![McpServer::Stdio(
+        McpServerStdio::new("termul", "/app/termul-manager")
+            .env(vec![EnvVariable::new(crate::acp::host_mcp::ENV_PORT, "9")]),
+    )];
+
+    let (_, meta) = shape_session_request_opt_with_place(true, &roblox, Some(servers), None).await;
+    let meta = meta.expect("meta");
+    assert_eq!(
+        studio_meta_pointer(&meta, "/options/mcpServers/termul/env/TERMUL_PLAN_PORT")
+            .and_then(|value| value.as_str().map(str::to_string)),
+        Some("9".to_string())
+    );
+}
