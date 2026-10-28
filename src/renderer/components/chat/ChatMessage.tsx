@@ -162,7 +162,15 @@ function blockIsImage(block: ContentBlock): boolean {
 }
 
 /** A single media block rendered as an AI Elements grid attachment. */
-function MediaGridItem({ block, id }: { block: ContentBlock; id: string }): React.JSX.Element {
+function MediaGridItem({
+  block,
+  id,
+  large = false
+}: {
+  block: ContentBlock
+  id: string
+  large?: boolean
+}): React.JSX.Element {
   const initial = useMemo(() => blockToAttachmentData(block, id), [block, id])
   const [data, setData] = useState(initial)
   const name = blockDisplayName(block)
@@ -193,6 +201,20 @@ function MediaGridItem({ block, id }: { block: ContentBlock; id: string }): Reac
       cancelled = true
     }
   }, [initial.url, block])
+
+  if (inlineImage && large) {
+    return (
+      <ImageLightbox src={data.url ?? ''} alt={name}>
+        <button type="button" className="block cursor-zoom-in bg-transparent p-0">
+          <img
+            src={data.url ?? ''}
+            alt={name}
+            className="max-h-[420px] max-w-full rounded-lg border border-border/60 object-contain"
+          />
+        </button>
+      </ImageLightbox>
+    )
+  }
 
   const attachment = (
     <Attachment data={data} title={name} className={inlineImage ? 'cursor-zoom-in' : undefined}>
@@ -259,7 +281,13 @@ function InlineAudio({ block }: { block: ContentBlock }): React.JSX.Element | nu
 }
 
 /** Render media blocks with safe inline previews and bounded embedded text. */
-export function MediaBlocks({ blocks }: { blocks: ContentBlock[] }): React.JSX.Element | null {
+export function MediaBlocks({
+  blocks,
+  large = false
+}: {
+  blocks: ContentBlock[]
+  large?: boolean
+}): React.JSX.Element | null {
   const media = mediaBlocks(blocks)
   if (media.length === 0) return null
   const resources = media.filter((block) => block.type === 'resource')
@@ -272,9 +300,14 @@ export function MediaBlocks({ blocks }: { blocks: ContentBlock[] }): React.JSX.E
   return (
     <>
       {attachments.length > 0 && (
-        <Attachments variant="grid" className="ml-0 w-fit py-0.5">
+        <Attachments variant="grid" className={cn('ml-0 py-0.5', !large && 'w-fit')}>
           {attachments.map((block, i) => (
-            <MediaGridItem key={`${block.type}-${i}`} block={block} id={`${block.type}-${i}`} />
+            <MediaGridItem
+              key={`${block.type}-${i}`}
+              block={block}
+              id={`${block.type}-${i}`}
+              large={large}
+            />
           ))}
         </Attachments>
       )}
@@ -550,7 +583,7 @@ function ChatMessageComponent({
             reduced={reduced}
             animateEnter={animateEnter}
           >
-            <MediaBlocks blocks={message.blocks} />
+            <MediaBlocks blocks={message.blocks} large />
           </StaggerSection>
         )}
         {hasActions && (

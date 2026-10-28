@@ -260,11 +260,6 @@ function ToolCallCardComponent({
   // terminal output) stays behind the collapsible row.
   const inlineDiff = hasDiff && !isSubagent
   const detailItems = inlineDiff ? content.filter((item) => item.type !== 'diff') : content
-  const pictures = content
-    .map((item) =>
-      item.type === 'content' ? (item as { content?: ContentBlock }).content : undefined
-    )
-    .filter((block): block is ContentBlock => block?.type === 'image')
   const detailWithoutPictures = detailItems.filter((item) => {
     if (item.type !== 'content') return true
     return (item as { content?: ContentBlock }).content?.type !== 'image'
@@ -482,13 +477,7 @@ function ToolCallCardComponent({
               </IconActionButton>
             ) : null}
           </div>
-          {pictures.length > 0 ? (
-            <div className="ml-4 flex flex-wrap gap-1.5 px-2 pb-2">
-              {pictures.map((block, i) => (
-                <MediaBlocks key={`picture-${i}`} blocks={[block]} />
-              ))}
-            </div>
-          ) : null}
+
           {hasDetail && !isSubagent && (
             <CollapseExpandMotion open={open} motion="chat">
               <div className="ml-4 flex flex-col gap-1.5 border-l border-border/50 px-2 pb-2 pt-1.5">
