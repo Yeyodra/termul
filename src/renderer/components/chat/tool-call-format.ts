@@ -60,9 +60,15 @@ export function toolIconName(toolCall: ToolCall): ToolIconName {
   return kindIcon(toolCall.kind)
 }
 
+/**
+ * Whether this call belongs to the generator surface. Matched on the tool title
+ * because the ACP kind is generic for every generator tool, and the name arrives
+ * namespaced by the MCP server (`mcp__termul__generate_clothing`).
+ */
 export function isGeneratorCall(toolCall: ToolCall): boolean {
   const name = toolCall.title?.trim().toLowerCase() ?? ''
-  return name.startsWith('generate_clothing') || name.startsWith('get_clothing')
+  const bare = name.replace(/^mcp__[a-z0-9_]+__/, '')
+  return bare.startsWith('generate_clothing') || bare.startsWith('get_clothing')
 }
 
 export interface StatusStyle {
