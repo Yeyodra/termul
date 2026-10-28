@@ -1,34 +1,16 @@
 /**
- * Puts the rendered picture on the tool card that produced it.
+ * Puts the rendered picture on the agent reply that asked for it.
  *
  * The generator runs through the MCP child, so its result reaches the agent, not
  * the transcript: `child.rs` lifts `image` into an image content block for the
  * model, and nothing carries it back to the chat. The renderer holds the bytes
- * already (`readClothingResult` returns them), so it attaches them to the tool
- * call the agent reported.
- *
- * Matched by tool title, because the ACP kind is generic for every generator
- * tool and the name arrives namespaced by the MCP server.
+ * already (`readClothingResult` returns them), so it appends them to the newest
+ * agent message of the session, where the bubble renders media.
  */
 
-import type { ContentBlock, ToolCall, ToolCallContent } from '@/lib/acp-api'
+import type { ContentBlock } from '@/lib/acp-api'
 import { useAcpStore } from '@/stores/acp-store'
-
-function bareName(toolCall: ToolCall): string {
-  return (toolCall.title?.trim().toLowerCase() ?? '').replace(/^mcp__[a-z0-9_]+__/, '')
-}
-
-function isTaskPoll(toolCall: ToolCall): boolean {
-  return bareName(toolCall).startsWith('get_clothing_task')
-}
-
-function hasImage(toolCall: ToolCall): boolean {
-  return (toolCall.content ?? []).some((item) => {
-    if (item.type !== 'content') return false
-    const block = (item as { content?: ContentBlock }).content
-    return block?.type === 'image'
-  })
-}
+import type { ChatMessage } from '@/stores/acp-store/types'
 
 /** `data:image/png;base64,…` into the block shape ACP uses on the wire. */
 export function imageBlockFromDataUrl(dataUrl: string): ContentBlock | null {
@@ -40,28 +22,29 @@ export function imageBlockFromDataUrl(dataUrl: string): ContentBlock | null {
   return { type: 'image', data: dataUrl.slice(comma + 1), mimeType }
 }
 
+function newestAgentMessage(messages: ChatMessage[]): ChatMessage | undefined {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    if (messages[i]?.role === 'agent') return messages[i]
+  }
+  return undefined
+}
+
+function alreadyShowsPicture(message: ChatMessage): boolean {
+  return message.blocks.some((block) => block.type === 'image')
+}
+
 /**
- * Attach `image` to the newest settled `get_clothing_task` card of `sessionId`.
- * Does nothing when the card already shows a picture, so a repeated poll does
- * not stack duplicates.
+ * Append `image` to the newest agent reply of `sessionId`. Does nothing when that
+ * reply already carries a picture, so a repeated poll does not stack duplicates.
  */
 export function attachGeneratedPicture(sessionId: string, image?: string): void {
   if (!image) return
   const store = useAcpStore.getState()
-  const calls = store.toolCalls[sessionId] ?? []
-  const target = [...calls].reverse().find((call) => isTaskPoll(call) && !hasImage(call))
-  if (!target) return
+  const message = newestAgentMessage(store.messages[sessionId] ?? [])
+  if (!message || alreadyShowsPicture(message)) return
 
   const block = imageBlockFromDataUrl(image)
   if (!block) return
 
-  const content: ToolCallContent[] = [
-    ...(target.content ?? []),
-    { type: 'content', content: block }
-  ]
-  store._onToolCallUpdate({
-    agentId: '',
-    sessionId,
-    update: { toolCallId: target.toolCallId, content }
-  })
+  store.appendBlockToMessage(sessionId, message.id, block)
 }

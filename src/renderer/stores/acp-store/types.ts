@@ -950,6 +950,8 @@ export interface AcpState {
   _onConfigOptionsUpdate: (e: ConfigOptionsUpdateEvent) => void
   _onSessionInfoUpdate: (e: SessionInfoUpdateEvent) => void
   _onUsageUpdate: (e: UsageUpdateEvent) => void
+  /** Append one non-text block to an existing message (a generator's picture). */
+  appendBlockToMessage: (sessionId: SessionId, messageId: string, block: ContentBlock) => void
   _onPermissionRequest: (e: PermissionRequestEvent, eventSeq?: number) => void
   _onQuestionRequest: (e: AskUserQuestionEvent, eventSeq?: number) => void
   _onQuestionCancelled: (e: QuestionCancelledEvent) => void

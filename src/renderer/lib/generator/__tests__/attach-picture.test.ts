@@ -1,27 +1,27 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ToolCall } from '@/lib/acp-api'
 import { attachGeneratedPicture, imageBlockFromDataUrl } from '../attach-picture'
 
 const { store } = vi.hoisted(() => ({
   store: {
-    toolCalls: {} as Record<string, ToolCall[]>,
-    updates: [] as unknown[]
+    messages: {} as Record<string, Array<{ id: string; role: string; blocks: unknown[] }>>,
+    appended: [] as Array<{ sessionId: string; messageId: string; block: unknown }>
   }
 }))
 
 vi.mock('@/stores/acp-store', () => ({
   useAcpStore: {
     getState: () => ({
-      toolCalls: store.toolCalls,
-      _onToolCallUpdate: (event: unknown) => store.updates.push(event)
+      messages: store.messages,
+      appendBlockToMessage: (sessionId: string, messageId: string, block: unknown) =>
+        store.appended.push({ sessionId, messageId, block })
     })
   }
 }))
 
 const PNG = 'data:image/png;base64,AAAA'
 
-function call(title: string, extra: Partial<ToolCall> = {}): ToolCall {
-  return { toolCallId: `id-${title}`, title, ...extra }
+function message(id: string, role: string, blocks: unknown[] = []) {
+  return { id, role, blocks }
 }
 
 describe('imageBlockFromDataUrl', () => {
@@ -41,59 +41,53 @@ describe('imageBlockFromDataUrl', () => {
 
 describe('attachGeneratedPicture', () => {
   beforeEach(() => {
-    store.toolCalls = {}
-    store.updates = []
+    store.messages = {}
+    store.appended = []
   })
 
-  it('adds the picture to the newest settled poll card', () => {
-    store.toolCalls['s-1'] = [call('mcp__termul__get_clothing_task')]
+  it('appends the picture to the newest agent reply', () => {
+    store.messages['s-1'] = [message('u1', 'user'), message('a1', 'agent')]
 
     attachGeneratedPicture('s-1', PNG)
 
-    expect(store.updates).toHaveLength(1)
-    const update = store.updates[0] as {
-      update: { toolCallId: string; content: Array<{ type: string; content: unknown }> }
-    }
-    expect(update.update.toolCallId).toBe('id-mcp__termul__get_clothing_task')
-    expect(update.update.content).toEqual([
-      { type: 'content', content: imageBlockFromDataUrl(PNG) }
-    ])
+    expect(store.appended).toHaveLength(1)
+    expect(store.appended[0]).toEqual({
+      sessionId: 's-1',
+      messageId: 'a1',
+      block: imageBlockFromDataUrl(PNG)
+    })
+  })
+
+  it('picks the newest agent reply, skipping a later user message', () => {
+    store.messages['s-1'] = [message('a1', 'agent'), message('a2', 'agent'), message('u2', 'user')]
+
+    attachGeneratedPicture('s-1', PNG)
+
+    expect(store.appended[0]?.messageId).toBe('a2')
   })
 
   it('does nothing without a picture', () => {
-    store.toolCalls['s-1'] = [call('mcp__termul__get_clothing_task')]
+    store.messages['s-1'] = [message('a1', 'agent')]
     attachGeneratedPicture('s-1', undefined)
-    expect(store.updates).toHaveLength(0)
+    expect(store.appended).toHaveLength(0)
   })
 
-  it('does nothing when the session has no poll card', () => {
-    store.toolCalls['s-1'] = [call('mcp__termul__generate_clothing')]
+  it('does nothing when the session has no agent reply yet', () => {
+    store.messages['s-1'] = [message('u1', 'user')]
     attachGeneratedPicture('s-1', PNG)
-    expect(store.updates).toHaveLength(0)
+    expect(store.appended).toHaveLength(0)
   })
 
-  it('does not stack a second picture on a card that already shows one', () => {
-    store.toolCalls['s-1'] = [
-      call('mcp__termul__get_clothing_task', {
-        content: [{ type: 'content', content: imageBlockFromDataUrl(PNG)! }]
-      })
+  it('does not stack a second picture on a reply that already shows one', () => {
+    store.messages['s-1'] = [
+      message('a1', 'agent', [{ type: 'image', data: 'AAAA', mimeType: 'image/png' }])
     ]
     attachGeneratedPicture('s-1', PNG)
-    expect(store.updates).toHaveLength(0)
+    expect(store.appended).toHaveLength(0)
   })
 
-  it('ignores a card whose title is not a clothing poll', () => {
-    store.toolCalls['s-1'] = [call('mcp__termul__get_3d_task')]
-    attachGeneratedPicture('s-1', PNG)
-    expect(store.updates).toHaveLength(0)
-  })
-
-  it('picks the newest of several poll cards', () => {
-    store.toolCalls['s-1'] = [
-      call('mcp__termul__get_clothing_task', { toolCallId: 'old' }),
-      call('mcp__termul__get_clothing_task', { toolCallId: 'new' })
-    ]
-    attachGeneratedPicture('s-1', PNG)
-    expect((store.updates[0] as { update: { toolCallId: string } }).update.toolCallId).toBe('new')
+  it('ignores a session the store does not know', () => {
+    attachGeneratedPicture('missing', PNG)
+    expect(store.appended).toHaveLength(0)
   })
 })
