@@ -9,6 +9,7 @@
 
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { ClothingCollection } from '@/components/roblox/ClothingCollection'
 import { cn } from '@/lib/utils'
 import { useActiveProject } from '@/stores/project-store'
 
@@ -92,10 +93,8 @@ export default function RobloxPage(): React.JSX.Element {
               This generator has no engine in this build yet. Only clothing is implemented.
             </p>
           </div>
-        ) : project ? (
-          <div className="flex min-h-0 flex-1 items-center justify-center">
-            <p className="text-xs text-muted-foreground">No garment yet.</p>
-          </div>
+        ) : project?.path ? (
+          <ClothingCollection projectPath={project.path} />
         ) : (
           <div className="m-auto max-w-sm text-center">
             <p className="text-xs text-muted-foreground">
