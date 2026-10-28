@@ -48,12 +48,6 @@ export type WorkspaceTab =
       projectId: string
       docPath: string
     }
-  | {
-      /** One tab per pane at most: there is one viewport, showing the newest
-       * artifact, so a second tab would duplicate it. */
-      type: 'artifact'
-      id: string
-    }
 
 /** Options for `splitPane`. */
 export interface SplitPaneOptions {

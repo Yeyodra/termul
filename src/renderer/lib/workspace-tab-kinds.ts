@@ -20,10 +20,7 @@ export const WORKSPACE_TAB_KIND_TRAITS = {
   'git-history': { persisted: true },
   diff: { persisted: true },
   'commit-diff': { persisted: true },
-  canvas: { persisted: false },
-  // Not persisted: the artifact itself lives in memory only, so a restored tab
-  // would open an empty viewport with nothing to show.
-  artifact: { persisted: false }
+  canvas: { persisted: false }
 } as const satisfies Record<WorkspaceTabKind, { persisted: boolean }>
 
 /** The tab kinds that are written to the workspace record (derived from the traits). */

@@ -6,6 +6,7 @@ import {
   diffLines,
   firstChange,
   isAllowOption,
+  isGeneratorCall,
   isRejectOption,
   kindIcon,
   pickPrimaryAllowOption,
@@ -255,5 +256,19 @@ describe('permission option helpers', () => {
     expect(pickPrimaryAllowOption(options)?.optionId).toBe('a1')
     expect(pickPrimaryAllowOption(options.slice(1, 2))?.optionId).toBe('a2')
     expect(pickPrimaryAllowOption([])).toBeNull()
+  })
+})
+
+describe('isGeneratorCall', () => {
+  const call = (title?: string) => ({ toolCallId: 'c1', title }) as const
+
+  it('recognises the clothing generator and its poll', () => {
+    expect(isGeneratorCall(call('generate_clothing'))).toBe(true)
+    expect(isGeneratorCall(call('get_clothing_task'))).toBe(true)
+  })
+  it('ignores other tools and an untitled call', () => {
+    expect(isGeneratorCall(call('read_file'))).toBe(false)
+    expect(isGeneratorCall(call('generate_3d'))).toBe(false)
+    expect(isGeneratorCall(call())).toBe(false)
   })
 })

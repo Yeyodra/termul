@@ -24,6 +24,7 @@ import type { ContentBlock, DiffContent, ToolCall, ToolCallContent } from '@/lib
 import { resolveDiffLanguage } from '@/lib/diff-highlight'
 import { type FilePathResolutionContext, openFilePathFromTerminal } from '@/lib/file-path-links'
 import { logFrontendError } from '@/lib/log-api'
+import { navigateToRoblox } from '@/lib/router-navigate'
 import { cn } from '@/lib/utils'
 import { MediaBlocks } from './ChatMessage'
 import { CHAT_ROW_ICON, CHAT_ROW_MIN_H } from './chat-layout'
@@ -31,7 +32,7 @@ import { CHEVRON_TRANSITION } from './chat-motion'
 import { DiffPreview } from './DiffPreview'
 import { EditDiffBlock } from './EditDiffBlock'
 import { HighlightedCode } from './highlighted-code'
-import { type ToolIconName, toolIconName } from './tool-call-format'
+import { isGeneratorCall, type ToolIconName, toolIconName } from './tool-call-format'
 import {
   describeToolCall,
   firstString,
@@ -457,6 +458,15 @@ function ToolCallCardComponent({
             )}
             {openFilePath ? (
               <IconActionButton label="Open file" onClick={openFile} className={CHAT_ROW_ICON}>
+                <ExternalLink />
+              </IconActionButton>
+            ) : null}
+            {isGeneratorCall(toolCall) ? (
+              <IconActionButton
+                label="Open in Clothing"
+                onClick={() => navigateToRoblox()}
+                className={CHAT_ROW_ICON}
+              >
                 <ExternalLink />
               </IconActionButton>
             ) : null}

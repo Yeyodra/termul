@@ -60,6 +60,11 @@ export function toolIconName(toolCall: ToolCall): ToolIconName {
   return kindIcon(toolCall.kind)
 }
 
+export function isGeneratorCall(toolCall: ToolCall): boolean {
+  const name = toolCall.title?.trim().toLowerCase() ?? ''
+  return name.startsWith('generate_clothing') || name.startsWith('get_clothing')
+}
+
 export interface StatusStyle {
   label: string
   /** Tailwind classes for the status badge. */

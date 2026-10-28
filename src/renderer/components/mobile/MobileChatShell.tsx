@@ -236,8 +236,6 @@ export function MobileChatShell({
         return browserTabLabel(activeBrowserTab)
       case 'canvas':
         return basename(activeTab.docPath)
-      case 'artifact':
-        return 'Artifact'
       default:
         reportUnknownTabKind(activeTab, 'MobileChatShell.headerTitle', 'using default title')
         return 'Termul'

@@ -58,6 +58,7 @@ import { useTerminalAutoSave } from './hooks/useTerminalAutoSave'
 import WorkspaceLayout from './layouts/WorkspaceLayout'
 import { initNotificationPermissions } from './lib/tauri-notification-api'
 import NotFound from './pages/NotFound'
+import RobloxPage from './pages/RobloxPage'
 import WorkspaceDashboard from './pages/WorkspaceDashboard'
 import WorkspaceSnapshots from './pages/WorkspaceSnapshots'
 
@@ -156,6 +157,7 @@ const router = createHashRouter(
       children: [
         { index: true, element: <WorkspaceDashboard /> },
         { path: 'c/:sessionId', element: <ChatRoute /> },
+        { path: 'roblox/*', element: <RobloxPage /> },
         { path: 'snapshots', element: <WorkspaceSnapshots /> }
       ]
     },
