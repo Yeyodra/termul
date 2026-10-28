@@ -2,6 +2,7 @@ import { motion, useReducedMotion } from 'framer-motion'
 import { memo, useEffect, useMemo, useState } from 'react'
 
 import { Attachment, AttachmentPreview, Attachments } from '@/components/ai-elements/attachments'
+import { TurnArtifacts } from '@/components/artifacts/TurnArtifacts'
 import { Bubble, BubbleContent } from '@/components/ui/bubble'
 import { ImageLightbox } from '@/components/ui/image-lightbox'
 import { Message, MessageContent } from '@/components/ui/message'
@@ -551,6 +552,16 @@ function ChatMessageComponent({
             animateEnter={animateEnter}
           >
             <MediaBlocks blocks={message.blocks} />
+          </StaggerSection>
+        )}
+        {isTurnTail && (
+          <StaggerSection
+            delay={actionsDelay}
+            align="start"
+            reduced={reduced}
+            animateEnter={animateEnter}
+          >
+            <TurnArtifacts live />
           </StaggerSection>
         )}
         {hasActions && (

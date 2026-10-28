@@ -1,57 +1,37 @@
 /**
- * The artifacts this session has generated, newest first.
+ * The artifacts a session generated, in the order they were made.
  *
- * Kept as a list rather than a single value so an earlier garment stays
- * reachable after the next generation replaces it. Only one entry is *live* —
- * there is one WebGL surface — and the rest show the still image the engine
- * already produced, which is enough to recognise and reopen them.
+ * Every entry keeps its own scene and its own canvas, so any number of cards can
+ * be live at once. That is a deliberate reversal of the first attempt, which
+ * shared one WebGL surface: sharing meant only one card could ever be live, and
+ * closing the tab that owned the surface lost the viewport entirely.
  *
- * The artifact never travels through a message: `acp-store` discards any
- * tool-result field over 128 KiB (`transcript.ts:433`) and an atlas is far
- * larger, so publishing it there would arrive empty.
+ * One context per card is affordable because the count is bounded by how many
+ * artifacts a session generated, not by how many messages it holds.
  */
 
 import { create } from 'zustand'
 import type { Artifact } from '@/lib/generator/viewport/artifact'
 
 export interface ArtifactEntry {
-  /** Stable id for React keys and for choosing which entry is live. */
   id: string
   artifact: Artifact
-  /** A still picture of the artifact, for the cards that are not live. */
+  /** The still the engine rendered, so a card shows something before its scene builds. */
   still?: string
   at: number
 }
 
 interface ArtifactState {
   entries: ArtifactEntry[]
-  /** Which entry the live surface is showing. */
-  liveId: string | null
   publish: (artifact: Artifact, still?: string) => void
-  /** Make an earlier entry live again. */
-  focus: (id: string) => void
   clear: () => void
 }
 
 export const useArtifactStore = create<ArtifactState>((set, get) => ({
   entries: [],
-  liveId: null,
   publish: (artifact, still) => {
-    const id = `artifact-${get().entries.length + 1}-${artifact.kind}`
-    set((state) => ({
-      entries: [{ id, artifact, still, at: Date.now() }, ...state.entries],
-      liveId: id
-    }))
+    const id = `artifact-${get().entries.length + 1}`
+    set((state) => ({ entries: [...state.entries, { id, artifact, still, at: Date.now() }] }))
   },
-  focus: (id) => {
-    if (get().entries.some((entry) => entry.id === id)) set({ liveId: id })
-  },
-  clear: () => set({ entries: [], liveId: null })
+  clear: () => set({ entries: [] })
 }))
-
-/** The entry the live surface is showing, falling back to the newest. */
-export function useLiveArtifact(): ArtifactEntry | null {
-  return useArtifactStore(
-    (state) => state.entries.find((entry) => entry.id === state.liveId) ?? state.entries[0] ?? null
-  )
-}
