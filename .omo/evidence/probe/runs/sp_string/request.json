@@ -1,0 +1,39 @@
+{
+  "runId": "sp_string",
+  "placement": "meta",
+  "alwaysLoad": true,
+  "enableToolSearch": null,
+  "systemPrompt": "ROBLOX_CHANNEL_PROBE_7f3a9c: You are a minimal replacement system prompt. Reply with the single word READY.",
+  "systemPromptForm": "string (FULL REPLACEMENT)",
+  "note": "probe server carried ONLY in _meta.claudeCode.options.mcpServers; ACP mcpServers array is EMPTY (ordering-trap safe)",
+  "sessionNewParams": {
+    "cwd": "C:\\Users\\Novella\\AppData\\Local\\Temp\\probe-sp_string-3bb3e6bf-7f48-4500-9095-de269ebf35ea",
+    "mcpServers": [],
+    "_meta": {
+      "claudeCode": {
+        "options": {
+          "thinking": {
+            "type": "adaptive",
+            "display": "summarized"
+          },
+          "mcpServers": {
+            "probe-srv": {
+              "type": "stdio",
+              "command": "C:\\Program Files\\nodejs\\node.exe",
+              "args": [
+                "C:\\Users\\Novella\\Documents\\Github\\termul\\.omo\\evidence\\probe\\mcp-probe-server.mjs"
+              ],
+              "env": {
+                "PROBE_DESC_CHARS": "60000",
+                "PROBE_LOG": "C:\\Users\\Novella\\Documents\\Github\\termul\\.omo\\evidence\\probe\\runs\\sp_string\\probe-server.log",
+                "PROBE_CALL_LOG": "C:\\Users\\Novella\\Documents\\Github\\termul\\.omo\\evidence\\probe\\runs\\sp_string\\probe-calls.log"
+              },
+              "alwaysLoad": true
+            }
+          }
+        }
+      },
+      "systemPrompt": "ROBLOX_CHANNEL_PROBE_7f3a9c: You are a minimal replacement system prompt. Reply with the single word READY."
+    }
+  }
+}

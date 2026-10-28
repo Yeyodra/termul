@@ -1,0 +1,46 @@
+{
+  "runId": "b_false",
+  "placement": "array",
+  "alwaysLoad": null,
+  "enableToolSearch": "false",
+  "note": "probe server carried ONLY in the ACP mcpServers array",
+  "sessionNewParams": {
+    "cwd": "C:\\Users\\Novella\\AppData\\Local\\Temp\\probe-b_false-320ddaf3-faab-4771-aae2-ce97afc2f71a",
+    "mcpServers": [
+      {
+        "name": "probe-srv",
+        "command": "C:\\Program Files\\nodejs\\node.exe",
+        "args": [
+          "C:\\Users\\Novella\\Documents\\Github\\termul\\.omo\\evidence\\probe\\mcp-probe-server.mjs"
+        ],
+        "env": [
+          {
+            "name": "PROBE_DESC_CHARS",
+            "value": "60000"
+          },
+          {
+            "name": "PROBE_LOG",
+            "value": "C:\\Users\\Novella\\Documents\\Github\\termul\\.omo\\evidence\\probe\\runs\\b_false\\probe-server.log"
+          },
+          {
+            "name": "PROBE_CALL_LOG",
+            "value": "C:\\Users\\Novella\\Documents\\Github\\termul\\.omo\\evidence\\probe\\runs\\b_false\\probe-calls.log"
+          }
+        ]
+      }
+    ],
+    "_meta": {
+      "claudeCode": {
+        "options": {
+          "thinking": {
+            "type": "adaptive",
+            "display": "summarized"
+          },
+          "env": {
+            "ENABLE_TOOL_SEARCH": "false"
+          }
+        }
+      }
+    }
+  }
+}

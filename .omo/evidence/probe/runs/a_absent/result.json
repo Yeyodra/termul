@@ -1,0 +1,10 @@
+{
+  "runId": "a_absent",
+  "placement": "meta",
+  "alwaysLoad": null,
+  "enableToolSearch": null,
+  "cwd": "C:\\Users\\Novella\\AppData\\Local\\Temp\\probe-a_absent-42fee8bb-5dd2-456e-98e9-490fb1af9eff",
+  "status": "completed",
+  "stopReason": "end_turn",
+  "wallMs": 5665
+}

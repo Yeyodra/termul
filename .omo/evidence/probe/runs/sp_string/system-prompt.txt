@@ -1,0 +1,2 @@
+You are a Claude agent, built on Anthropic's Claude Agent SDK.
+ROBLOX_CHANNEL_PROBE_7f3a9c: You are a minimal replacement system prompt. Reply with the single word READY.

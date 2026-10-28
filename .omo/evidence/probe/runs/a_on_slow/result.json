@@ -1,0 +1,10 @@
+{
+  "runId": "a_on_slow",
+  "placement": "meta",
+  "alwaysLoad": true,
+  "enableToolSearch": null,
+  "cwd": "C:\\Users\\Novella\\AppData\\Local\\Temp\\probe-a_on_slow-0f3e9a16-170a-44d0-bcaa-056f11b61935",
+  "status": "completed",
+  "stopReason": "end_turn",
+  "wallMs": 14927
+}

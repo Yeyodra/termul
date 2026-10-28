@@ -1,0 +1,16 @@
+{
+  "schema_version": 2,
+  "active_work_id": "roblox-tool-loading-v2",
+  "works": {
+    "roblox-tool-loading-v2": {
+      "work_id": "roblox-tool-loading-v2",
+      "active_plan": ".omo/plans/roblox-tool-loading-v2.md",
+      "plan_name": "roblox-tool-loading-v2",
+      "session_ids": ["opencode:ses_e882a909bffe5qDavy7pZjSc3x"],
+      "status": "paused",
+      "worktree_path": null,
+      "progress": { "done": 13, "blocked": 1, "remaining": 0 },
+      "blocked_on": "F3 real manual QA - needs the user to run the recipe in .omo/evidence/task-10-roblox-tool-loading-v2.md"
+    }
+  }
+}

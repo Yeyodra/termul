@@ -1,0 +1,10 @@
+{
+  "runId": "t_off",
+  "placement": "meta",
+  "alwaysLoad": false,
+  "enableToolSearch": null,
+  "cwd": "C:\\Users\\Novella\\AppData\\Local\\Temp\\probe-t_off-180b4918-d38c-4304-8ca3-ec3df961d684",
+  "status": "completed",
+  "stopReason": "end_turn",
+  "wallMs": 5219
+}

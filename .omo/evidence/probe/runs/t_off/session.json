@@ -1,0 +1,160 @@
+{
+  "sessionId": "979ce373-d7d2-44dd-a737-59023d20f123",
+  "newSessionResponse": {
+    "sessionId": "979ce373-d7d2-44dd-a737-59023d20f123",
+    "modes": {
+      "currentModeId": "bypassPermissions",
+      "availableModes": [
+        {
+          "id": "default",
+          "name": "Manual",
+          "description": "Always ask before making changes"
+        },
+        {
+          "id": "acceptEdits",
+          "name": "Accept edits",
+          "description": "Automatically accept all file edits"
+        },
+        {
+          "id": "plan",
+          "name": "Plan",
+          "description": "Create a plan before making changes"
+        },
+        {
+          "id": "auto",
+          "name": "Auto",
+          "description": "Claude handles permission decisions"
+        },
+        {
+          "id": "bypassPermissions",
+          "name": "Bypass permissions",
+          "description": "Accepts all permissions"
+        }
+      ]
+    },
+    "configOptions": [
+      {
+        "id": "mode",
+        "name": "Mode",
+        "description": "Session permission mode",
+        "category": "mode",
+        "type": "select",
+        "currentValue": "bypassPermissions",
+        "options": [
+          {
+            "value": "default",
+            "name": "Manual",
+            "description": "Always ask before making changes"
+          },
+          {
+            "value": "acceptEdits",
+            "name": "Accept edits",
+            "description": "Automatically accept all file edits"
+          },
+          {
+            "value": "plan",
+            "name": "Plan",
+            "description": "Create a plan before making changes"
+          },
+          {
+            "value": "auto",
+            "name": "Auto",
+            "description": "Claude handles permission decisions"
+          },
+          {
+            "value": "bypassPermissions",
+            "name": "Bypass permissions",
+            "description": "Accepts all permissions"
+          }
+        ]
+      },
+      {
+        "id": "model",
+        "name": "Model",
+        "description": "AI model to use",
+        "category": "model",
+        "type": "select",
+        "currentValue": "opus",
+        "options": [
+          {
+            "value": "default",
+            "name": "Default (recommended)",
+            "description": "Opus"
+          },
+          {
+            "value": "opus",
+            "name": "Opus 5.5",
+            "description": "Opus 5.5 · Best for everyday, complex tasks · $4/$20 per Mtok"
+          },
+          {
+            "value": "fable",
+            "name": "Fable 5.1",
+            "description": "Fable 5.1 · Most capable for your hardest and longest-running tasks · $10/$50 per Mtok"
+          },
+          {
+            "value": "sonnet",
+            "name": "Sonnet 5.5",
+            "description": "Sonnet 5.5 · Efficient for routine tasks · $2/$10 per Mtok"
+          },
+          {
+            "value": "haiku",
+            "name": "Haiku 5.5",
+            "description": "Haiku 5.5 · Fastest for quick answers · $0.10/$0.50 per Mtok ($0.50/$2.50 for prompts over 100k)"
+          }
+        ]
+      },
+      {
+        "id": "effort",
+        "name": "Effort",
+        "description": "Available effort levels for this model",
+        "category": "thought_level",
+        "type": "select",
+        "currentValue": "medium",
+        "options": [
+          {
+            "value": "default",
+            "name": "Default"
+          },
+          {
+            "value": "low",
+            "name": "Low"
+          },
+          {
+            "value": "medium",
+            "name": "Medium"
+          },
+          {
+            "value": "high",
+            "name": "High"
+          },
+          {
+            "value": "xhigh",
+            "name": "Xhigh"
+          },
+          {
+            "value": "max",
+            "name": "Max"
+          }
+        ]
+      },
+      {
+        "id": "fast",
+        "name": "Fast mode",
+        "description": "Faster responses on supported models",
+        "category": "model_config",
+        "type": "select",
+        "currentValue": "off",
+        "options": [
+          {
+            "value": "on",
+            "name": "On"
+          },
+          {
+            "value": "off",
+            "name": "Off"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "runId": "a_meta_auto",
+  "placement": "meta",
+  "alwaysLoad": null,
+  "enableToolSearch": "auto",
+  "cwd": "C:\\Users\\Novella\\AppData\\Local\\Temp\\probe-a_meta_auto-eddc6350-4f1a-4279-9c08-05a0e450c318",
+  "status": "completed",
+  "stopReason": "end_turn",
+  "wallMs": 5797
+}

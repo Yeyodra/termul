@@ -1,0 +1,48 @@
+{
+  "runId": "t_array_on",
+  "placement": "array",
+  "alwaysLoad": true,
+  "enableToolSearch": null,
+  "note": "probe server carried ONLY in the ACP mcpServers array",
+  "sessionNewParams": {
+    "cwd": "C:\\Users\\Novella\\AppData\\Local\\Temp\\probe-t_array_on-744b18c0-22d3-4e06-a962-f20ade77c451",
+    "mcpServers": [
+      {
+        "name": "probe-srv",
+        "command": "C:\\Program Files\\nodejs\\node.exe",
+        "args": [
+          "C:\\Users\\Novella\\Documents\\Github\\termul\\.omo\\evidence\\probe\\mcp-probe-server.mjs"
+        ],
+        "env": [
+          {
+            "name": "PROBE_DESC_CHARS",
+            "value": "60000"
+          },
+          {
+            "name": "PROBE_LOG",
+            "value": "C:\\Users\\Novella\\Documents\\Github\\termul\\.omo\\evidence\\probe\\runs\\t_array_on\\probe-server.log"
+          },
+          {
+            "name": "PROBE_CALL_LOG",
+            "value": "C:\\Users\\Novella\\Documents\\Github\\termul\\.omo\\evidence\\probe\\runs\\t_array_on\\probe-calls.log"
+          },
+          {
+            "name": "PROBE_BULK_TOOLS",
+            "value": "14"
+          }
+        ],
+        "alwaysLoad": true
+      }
+    ],
+    "_meta": {
+      "claudeCode": {
+        "options": {
+          "thinking": {
+            "type": "adaptive",
+            "display": "summarized"
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "runId": "sp_string",
+  "placement": "meta",
+  "alwaysLoad": true,
+  "enableToolSearch": null,
+  "systemPromptForm": "string",
+  "cwd": "C:\\Users\\Novella\\AppData\\Local\\Temp\\probe-sp_string-3bb3e6bf-7f48-4500-9095-de269ebf35ea",
+  "status": "completed",
+  "stopReason": "end_turn",
+  "wallMs": 5203
+}

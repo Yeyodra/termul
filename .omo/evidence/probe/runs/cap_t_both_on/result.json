@@ -1,0 +1,10 @@
+{
+  "runId": "cap_t_both_on",
+  "placement": "both",
+  "alwaysLoad": true,
+  "enableToolSearch": null,
+  "cwd": "C:\\Users\\Novella\\AppData\\Local\\Temp\\probe-cap_t_both_on-b2f9df02-15f5-4055-8a51-fd8a2dae1b7d",
+  "status": "completed",
+  "stopReason": "end_turn",
+  "wallMs": 5265
+}

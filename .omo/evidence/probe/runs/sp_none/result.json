@@ -1,0 +1,11 @@
+{
+  "runId": "sp_none",
+  "placement": "meta",
+  "alwaysLoad": true,
+  "enableToolSearch": null,
+  "systemPromptForm": "absent",
+  "cwd": "C:\\Users\\Novella\\AppData\\Local\\Temp\\probe-sp_none-741b64db-a11e-4eb7-a1e8-dafe55f32faf",
+  "status": "completed",
+  "stopReason": "end_turn",
+  "wallMs": 5302
+}

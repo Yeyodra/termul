@@ -1,0 +1,10 @@
+{
+  "runId": "t_on",
+  "placement": "meta",
+  "alwaysLoad": true,
+  "enableToolSearch": null,
+  "cwd": "C:\\Users\\Novella\\AppData\\Local\\Temp\\probe-t_on-38378b2d-be26-4d1f-98eb-485870a6cb94",
+  "status": "completed",
+  "stopReason": "end_turn",
+  "wallMs": 6503
+}

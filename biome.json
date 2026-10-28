@@ -15,6 +15,7 @@
       "!**/landing",
       "!**/src-tauri",
       "!**/.termul",
+      "!**/.omo",
       "!**/.worktrees",
       "!**/_bmad",
       "!**/_bmad-output",

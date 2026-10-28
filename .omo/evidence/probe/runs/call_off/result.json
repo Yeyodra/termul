@@ -1,0 +1,10 @@
+{
+  "runId": "call_off",
+  "placement": "meta",
+  "alwaysLoad": false,
+  "enableToolSearch": null,
+  "cwd": "C:\\Users\\Novella\\AppData\\Local\\Temp\\probe-call_off-cec4896f-eb27-4c6c-9c21-20d7dfb7728a",
+  "status": "completed",
+  "stopReason": "end_turn",
+  "wallMs": 25307
+}

@@ -1,0 +1,10 @@
+{
+  "runId": "call_on",
+  "placement": "meta",
+  "alwaysLoad": true,
+  "enableToolSearch": null,
+  "cwd": "C:\\Users\\Novella\\AppData\\Local\\Temp\\probe-call_on-eaac05e7-bb66-4b0d-9e6f-1da704fad20a",
+  "status": "completed",
+  "stopReason": "end_turn",
+  "wallMs": 11344
+}

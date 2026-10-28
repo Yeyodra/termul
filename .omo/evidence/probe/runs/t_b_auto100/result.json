@@ -1,0 +1,10 @@
+{
+  "runId": "t_b_auto100",
+  "placement": "array",
+  "alwaysLoad": null,
+  "enableToolSearch": "auto:100",
+  "cwd": "C:\\Users\\Novella\\AppData\\Local\\Temp\\probe-t_b_auto100-4520e746-9d8a-4cff-99f2-4571406ca10d",
+  "status": "completed",
+  "stopReason": "end_turn",
+  "wallMs": 6934
+}

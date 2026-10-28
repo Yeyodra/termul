@@ -1,0 +1,10 @@
+{
+  "runId": "t_array_on",
+  "placement": "array",
+  "alwaysLoad": true,
+  "enableToolSearch": null,
+  "cwd": "C:\\Users\\Novella\\AppData\\Local\\Temp\\probe-t_array_on-744b18c0-22d3-4e06-a962-f20ade77c451",
+  "status": "completed",
+  "stopReason": "end_turn",
+  "wallMs": 4740
+}

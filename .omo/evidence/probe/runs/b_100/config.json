@@ -1,0 +1,30 @@
+{
+  "runId": "b_100",
+  "adapterIndex": "C:\\Users\\Novella\\AppData\\Roaming\\com.termul-manager.app\\acp-registry-binaries\\claude-acp\\node_modules\\@agentclientprotocol\\claude-agent-acp\\dist\\index.js",
+  "cwd": "C:\\Users\\Novella\\AppData\\Local\\Temp\\probe-b_100-cc1b63e1-deaa-4ffd-a85e-52bad586010f",
+  "probeName": "probe-srv",
+  "probeCommand": "C:\\Program Files\\nodejs\\node.exe",
+  "probeArgs": [
+    "C:\\Users\\Novella\\Documents\\Github\\termul\\.omo\\evidence\\probe\\mcp-probe-server.mjs"
+  ],
+  "probeEnv": {
+    "PROBE_DESC_CHARS": "60000",
+    "PROBE_LOG": "C:\\Users\\Novella\\Documents\\Github\\termul\\.omo\\evidence\\probe\\runs\\b_100\\probe-server.log",
+    "PROBE_CALL_LOG": "C:\\Users\\Novella\\Documents\\Github\\termul\\.omo\\evidence\\probe\\runs\\b_100\\probe-calls.log"
+  },
+  "placement": "array",
+  "alwaysLoad": null,
+  "enableToolSearch": "100",
+  "prompt": "Reply with the single word READY.",
+  "prompt2": null,
+  "permissionPolicy": "deny",
+  "logPath": "C:\\Users\\Novella\\Documents\\Github\\termul\\.omo\\evidence\\probe\\runs\\b_100\\acp.ndjson",
+  "stderrPath": "C:\\Users\\Novella\\Documents\\Github\\termul\\.omo\\evidence\\probe\\runs\\b_100\\adapter-stderr.log",
+  "requestPath": "C:\\Users\\Novella\\Documents\\Github\\termul\\.omo\\evidence\\probe\\runs\\b_100\\request.json",
+  "resultPath": "C:\\Users\\Novella\\Documents\\Github\\termul\\.omo\\evidence\\probe\\runs\\b_100\\result.json",
+  "sessionPath": "C:\\Users\\Novella\\Documents\\Github\\termul\\.omo\\evidence\\probe\\runs\\b_100\\session.json",
+  "timeoutMs": 180000,
+  "adapterEnv": {
+    "CLAUDE_AGENT_LOGS": "C:\\Users\\Novella\\Documents\\Github\\termul\\.omo\\evidence\\probe\\runs\\b_100"
+  }
+}

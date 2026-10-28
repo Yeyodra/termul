@@ -1,0 +1,11 @@
+{
+  "runId": "sp_append_noload",
+  "placement": "meta",
+  "alwaysLoad": false,
+  "enableToolSearch": null,
+  "systemPromptForm": "object",
+  "cwd": "C:\\Users\\Novella\\AppData\\Local\\Temp\\probe-sp_append_noload-47a77fe9-bf47-4685-8357-9e91ddd74459",
+  "status": "completed",
+  "stopReason": "end_turn",
+  "wallMs": 5537
+}

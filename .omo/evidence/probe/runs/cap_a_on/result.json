@@ -1,0 +1,10 @@
+{
+  "runId": "cap_a_on",
+  "placement": "meta",
+  "alwaysLoad": true,
+  "enableToolSearch": null,
+  "cwd": "C:\\Users\\Novella\\AppData\\Local\\Temp\\probe-cap_a_on-3373bd8a-9d0a-49ef-a3d1-ab26701fa300",
+  "status": "completed",
+  "stopReason": "end_turn",
+  "wallMs": 16110
+}

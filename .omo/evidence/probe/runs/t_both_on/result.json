@@ -1,0 +1,10 @@
+{
+  "runId": "t_both_on",
+  "placement": "both",
+  "alwaysLoad": true,
+  "enableToolSearch": null,
+  "cwd": "C:\\Users\\Novella\\AppData\\Local\\Temp\\probe-t_both_on-3795e165-abda-47c0-ba44-a70aec11179a",
+  "status": "completed",
+  "stopReason": "end_turn",
+  "wallMs": 5091
+}
