@@ -180,9 +180,9 @@ impl HostPlanServer {
             }
         };
         let still = fields
-            .remove("image")
-            .and_then(|value| value.as_str().map(str::to_string))
-            .and_then(|url| decode_data_url(&url).ok());
+            .get("image")
+            .and_then(|value| value.as_str())
+            .and_then(|url| decode_data_url(url).ok());
         let version = version_fields(fields);
         let root = scope.root.clone();
         let requested = record_dir.clone();

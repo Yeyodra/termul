@@ -372,8 +372,9 @@ fn the_review_sheet_is_kept_beside_the_atlas_for_the_same_version() {
     );
     assert_eq!(record(&cwd, "royal-robe")["versions"][0]["still"], "v1.still.png");
     assert!(
-        saved.get("image").is_none(),
-        "the sheet must not ride along either"
+        saved.get("image").is_some(),
+        "the sheet stays on the reply: the chat renders it, and child.rs lifts it \
+         into an image content block"
     );
 }
 
