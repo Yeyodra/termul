@@ -20,6 +20,18 @@ pub mod session;
 /// Environment override, mirroring the Node bridge's `STUDIO_MCP_EXE`.
 pub const STUDIO_MCP_EXE_ENV: &str = "STUDIO_MCP_EXE";
 
+/// The stable command token the MCP registry stores for the Roblox bridge.
+///
+/// The registry entry cannot hold the real `StudioMCP.exe` path: Roblox moves it
+/// to a new `version-<hash>` directory on every update, so a stored path goes
+/// stale and the entry silently stops spawning (the badge reads "Unreachable"
+/// while a freshly resolved path still works). The entry therefore stores this
+/// token and every spawn site expands it through [`resolve_known_command`].
+///
+/// Kept identical to the server `name` the renderer registers
+/// (`ROBLOX_STUDIO_MCP_ID`), so a user reading the registry sees one string.
+pub const STUDIO_MCP_COMMAND_TOKEN: &str = "roblox-studio";
+
 /// Directory name under `Documents` (and under local app data on fallback).
 pub const WORKSPACE_DIR_NAME: &str = "RobloxKit";
 
@@ -60,6 +72,30 @@ pub fn find_studio_mcp_in(override_path: Option<PathBuf>, local_app_data: Option
         }
     }
     None
+}
+
+/// Expand a registry command token into the executable it names, right now.
+///
+/// `None` means "not a known token, treat the command literally": a normal
+/// `npx`/absolute-path server passes through untouched, so this stays a no-op
+/// for every MCP server that is not the Roblox bridge.
+///
+/// Resolution happens per call on purpose. The whole point is that the answer
+/// changes when Roblox updates, so caching it anywhere would reintroduce the
+/// stale-path bug this exists to remove.
+#[must_use]
+pub fn resolve_known_command(command: &str) -> Option<PathBuf> {
+    resolve_known_command_in(command, find_studio_mcp())
+}
+
+/// Testable core of [`resolve_known_command`]: takes the already-resolved
+/// Studio path so a test never has to mutate the process environment.
+#[must_use]
+pub fn resolve_known_command_in(command: &str, studio: Option<PathBuf>) -> Option<PathBuf> {
+    match command {
+        STUDIO_MCP_COMMAND_TOKEN => studio,
+        _ => None,
+    }
 }
 
 /// The renderer-facing status.

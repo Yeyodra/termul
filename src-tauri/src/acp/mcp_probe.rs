@@ -375,10 +375,20 @@ async fn probe_inner(server: &McpServerConfig) -> ProbeResult {
 /// any real spawn error stays observable. On non-Windows the bare command name
 /// is returned unchanged (PATH resolution is left to the spawner).
 fn resolve_stdio_command(command: &str) -> (String, Vec<String>) {
-    match crate::pty::manager::resolve_spawn_program(command) {
+    resolve_stdio_command_with(command, crate::roblox::find_studio_mcp())
+}
+
+/// Testable core of [`resolve_stdio_command`]: takes the already-resolved Studio
+/// path so a test asserts the expansion without depending on what this machine
+/// has installed.
+fn resolve_stdio_command_with(command: &str, studio: Option<std::path::PathBuf>) -> (String, Vec<String>) {
+    let expanded = crate::roblox::resolve_known_command_in(command, studio)
+        .map(|path| path.to_string_lossy().into_owned())
+        .unwrap_or_else(|| command.to_string());
+    match crate::pty::manager::resolve_spawn_program(&expanded) {
         Ok(resolved) => (resolved.program, resolved.prepend_args),
         Err(_) => (
-            crate::trackers::git_tracker::resolve_executable(command),
+            crate::trackers::git_tracker::resolve_executable(&expanded),
             Vec::new(),
         ),
     }

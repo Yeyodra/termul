@@ -63,6 +63,35 @@ fn empty_override_is_ignored() {
 }
 
 #[test]
+fn the_studio_token_resolves_to_the_installed_exe() {
+    let exe = PathBuf::from("C:/Roblox/Versions/version-abc/StudioMCP.exe");
+
+    assert_eq!(
+        resolve_known_command_in(STUDIO_MCP_COMMAND_TOKEN, Some(exe.clone())),
+        Some(exe)
+    );
+}
+
+#[test]
+fn the_studio_token_without_an_install_resolves_to_nothing() {
+    // Studio uninstalled: the caller keeps the literal command so the spawn
+    // error stays observable instead of becoming a silent no-op.
+    assert_eq!(resolve_known_command_in(STUDIO_MCP_COMMAND_TOKEN, None), None);
+}
+
+#[test]
+fn a_foreign_command_is_never_claimed_as_a_token() {
+    // The registry holds every MCP server, not just Roblox. A non-token command
+    // must fall through to a literal spawn or the probe would rewrite it.
+    let studio = Some(PathBuf::from("C:/Roblox/Versions/version-abc/StudioMCP.exe"));
+
+    assert_eq!(resolve_known_command_in("npx", studio.clone()), None);
+    assert_eq!(resolve_known_command_in("C:/tools/server.exe", studio.clone()), None);
+    assert_eq!(resolve_known_command_in("", studio.clone()), None);
+    assert_eq!(resolve_known_command_in("Roblox-Studio", studio), None);
+}
+
+#[test]
 fn workspace_prefers_documents_then_local_app_data() {
     let home = PathBuf::from("C:/Users/someone");
     let local = PathBuf::from("C:/Users/someone/AppData/Local");
