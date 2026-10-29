@@ -404,7 +404,11 @@ export function RobloxInspector({
         </button>
       </div>
 
-      <div role="tablist" aria-label="Inspector" className="flex flex-wrap gap-px px-2 pt-1">
+      <div
+        role="tablist"
+        aria-label="Inspector sections"
+        className="flex flex-wrap gap-px px-2 pt-1"
+      >
         {visibleTabs.map((id) => (
           <button
             key={id}
