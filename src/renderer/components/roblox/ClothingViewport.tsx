@@ -24,6 +24,7 @@ import {
   useRobloxRecordsStore
 } from '@/stores/roblox-records-store'
 import { usePickedSlug } from '@/stores/roblox-selection-store'
+import { ClothingComposer } from './ClothingComposer'
 import { RobloxInspector } from './RobloxInspector'
 
 const TYPES = ['shirt', 'pants', 'tshirt'] as const
@@ -151,6 +152,7 @@ export function ClothingViewport({ projectPath }: ClothingViewportProps): React.
             </div>
           </dl>
         ) : null}
+        <ClothingComposer record={active} />
       </div>
 
       <RobloxInspector record={active} version={version} paint={paint} onRestore={handleRestore} />

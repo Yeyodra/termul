@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useRobloxRecordsStore } from '@/stores/roblox-records-store'
 import { useRobloxSelectionStore } from '@/stores/roblox-selection-store'
@@ -51,6 +52,15 @@ function record(slug: string, overrides: Record<string, unknown> = {}) {
   }
 }
 
+/** The page composer needs a router; this component renders one. */
+function renderViewport(): void {
+  render(
+    <MemoryRouter initialEntries={['/roblox/clothing']}>
+      <ClothingViewport projectPath="/p" />
+    </MemoryRouter>
+  )
+}
+
 describe('ClothingViewport', () => {
   beforeEach(() => {
     mocks.loadArtifactRecords.mockReset()
@@ -71,7 +81,7 @@ describe('ClothingViewport', () => {
 
   it('hands the newest atlas to the viewport while nothing was picked', async () => {
     mocks.loadArtifactRecords.mockResolvedValue([record('royal-robe')])
-    render(<ClothingViewport projectPath="/p" />)
+    renderViewport()
 
     expect(await screen.findByText('scene')).toBeInTheDocument()
     expect(viewports.some((entry) => entry.atlas === 'data:image/png;base64,AAAA')).toBe(true)
@@ -79,7 +89,7 @@ describe('ClothingViewport', () => {
 
   it('switches the viewport when the Side panel picks another record', async () => {
     mocks.loadArtifactRecords.mockResolvedValue([record('royal-robe'), record('desert-camo')])
-    render(<ClothingViewport projectPath="/p" />)
+    renderViewport()
 
     expect(await screen.findByText(/\.termul\/generated\/shirt\/royal-robe/)).toBeInTheDocument()
 
@@ -90,7 +100,7 @@ describe('ClothingViewport', () => {
   it('keeps a placeholder when the atlas could not be read', async () => {
     mocks.loadArtifactRecords.mockResolvedValue([record('royal-robe')])
     mocks.readAtlasDataUrl.mockResolvedValue(null)
-    render(<ClothingViewport projectPath="/p" />)
+    renderViewport()
 
     expect(await screen.findByText(/Reading v1/)).toBeInTheDocument()
   })
@@ -101,14 +111,14 @@ describe('ClothingViewport', () => {
         versions: [{ n: 1, at: 1, prompt: 'bad', ok: false, atlas: 'v1.png' }]
       })
     ])
-    render(<ClothingViewport projectPath="/p" />)
+    renderViewport()
 
     expect(await screen.findByText('failed')).toBeInTheDocument()
   })
 
   it('invites a pick when the project holds nothing', async () => {
     mocks.loadArtifactRecords.mockResolvedValue([])
-    render(<ClothingViewport projectPath="/p" />)
+    renderViewport()
 
     // Both the viewport placeholder and the Inspector say it, so this asserts
     // presence rather than uniqueness on purpose.
