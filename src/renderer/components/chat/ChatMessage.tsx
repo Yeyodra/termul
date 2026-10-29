@@ -536,7 +536,8 @@ function ChatMessageComponent({
   const streaming = message.streaming && isLast
   const proseText = normalizePlanFenceBoundary(stripEmptyFences(text, streaming))
   const proseDelay = nextDelay()
-  const mediaDelay = hasMedia ? nextDelay() : null
+  const pictureDelay = hasMedia || livePicture != null ? nextDelay() : null
+  const mediaDelay = hasMedia ? pictureDelay : null
   const actionsDelay = nextDelay()
   const agentCopyText = turnText ?? text
 
@@ -554,7 +555,7 @@ function ChatMessageComponent({
             so they don't render a blank shell above the media grid. The
             streaming caret still needs a bubble to live in while the turn is
             in progress, even before any text has arrived. */}
-        {(proseText.length > 0 || streaming) && (
+        {(proseText.length > 0 || streaming || livePicture != null) && (
           <Bubble variant="ghost" className="w-full">
             <BubbleContent>
               <StaggerSection
@@ -578,6 +579,24 @@ function ChatMessageComponent({
                   />
                 )}
               </StaggerSection>
+              {!hasMedia && livePicture != null && (
+                <StaggerSection
+                  delay={pictureDelay ?? proseDelay}
+                  align="start"
+                  reduced={reduced}
+                  animateEnter={animateEnter}
+                >
+                  <ImageLightbox src={livePicture} alt="Generated artifact">
+                    <button type="button" className="block cursor-zoom-in bg-transparent p-0">
+                      <img
+                        src={livePicture}
+                        alt="Generated artifact"
+                        className="max-h-[420px] max-w-full rounded-lg border border-border/60 object-contain"
+                      />
+                    </button>
+                  </ImageLightbox>
+                </StaggerSection>
+              )}
             </BubbleContent>
           </Bubble>
         )}
@@ -589,24 +608,6 @@ function ChatMessageComponent({
             animateEnter={animateEnter}
           >
             <MediaBlocks blocks={message.blocks} large />
-          </StaggerSection>
-        )}
-        {!hasMedia && livePicture && mediaDelay != null && (
-          <StaggerSection
-            delay={mediaDelay}
-            align="start"
-            reduced={reduced}
-            animateEnter={animateEnter}
-          >
-            <ImageLightbox src={livePicture} alt="Generated artifact">
-              <button type="button" className="block cursor-zoom-in bg-transparent p-0">
-                <img
-                  src={livePicture}
-                  alt="Generated artifact"
-                  className="max-h-[420px] max-w-full rounded-lg border border-border/60 object-contain"
-                />
-              </button>
-            </ImageLightbox>
           </StaggerSection>
         )}
         {hasActions && (
