@@ -5,6 +5,7 @@ import {
   diffLineCounts,
   diffLines,
   firstChange,
+  generatorFeature,
   isAllowOption,
   isGeneratorCall,
   isRejectOption,
@@ -266,9 +267,17 @@ describe('isGeneratorCall', () => {
     expect(isGeneratorCall(call('generate_clothing'))).toBe(true)
     expect(isGeneratorCall(call('get_clothing_task'))).toBe(true)
   })
+  it('recognises every generator family, not just clothing', () => {
+    expect(generatorFeature(call('generate_3d'))).toBe('3d')
+    expect(generatorFeature(call('mcp__termul__generate_vfx'))).toBe('vfx')
+    expect(generatorFeature(call('get_sfx_task'))).toBe('sfx')
+    expect(generatorFeature(call('generate_clothing'))).toBe('clothing')
+  })
+
   it('ignores other tools and an untitled call', () => {
     expect(isGeneratorCall(call('read_file'))).toBe(false)
-    expect(isGeneratorCall(call('generate_3d'))).toBe(false)
+    expect(generatorFeature(call('read_file'))).toBeNull()
     expect(isGeneratorCall(call())).toBe(false)
+    expect(generatorFeature(call())).toBeNull()
   })
 })

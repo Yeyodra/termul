@@ -9,7 +9,6 @@
  */
 
 import type { GeneratorCall, GeneratorReply } from '@/lib/acp-transport/generator-gateway-client'
-import { attachGeneratedPicture } from '@/lib/generator/attach-picture'
 import type { TaskQueue } from '@/lib/generator/task-queue'
 import {
   type ClothingToolDeps,
@@ -122,7 +121,6 @@ async function dispatch(deps: GeneratorHandlerDeps, call: GeneratorCall): Promis
       }
     }
     const result = readClothingResult(deps.queue, taskId)
-    if (result.status === 'done') attachGeneratedPicture(call.sessionId, result.image)
     return {
       callId: call.callId,
       ok: true,

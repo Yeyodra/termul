@@ -32,7 +32,12 @@ import { CHEVRON_TRANSITION } from './chat-motion'
 import { DiffPreview } from './DiffPreview'
 import { EditDiffBlock } from './EditDiffBlock'
 import { HighlightedCode } from './highlighted-code'
-import { isGeneratorCall, type ToolIconName, toolIconName } from './tool-call-format'
+import {
+  FEATURE_LABELS,
+  generatorFeature,
+  type ToolIconName,
+  toolIconName
+} from './tool-call-format'
 import {
   describeToolCall,
   firstString,
@@ -467,10 +472,10 @@ function ToolCallCardComponent({
                 <ExternalLink />
               </IconActionButton>
             ) : null}
-            {isGeneratorCall(toolCall) ? (
+            {generatorFeature(toolCall) ? (
               <IconActionButton
-                label="Open in Clothing"
-                onClick={() => navigateToRoblox()}
+                label={`Open in ${FEATURE_LABELS[generatorFeature(toolCall) ?? ''] ?? 'Roblox'}`}
+                onClick={() => navigateToRoblox(generatorFeature(toolCall) ?? undefined)}
                 className={CHAT_ROW_ICON}
               >
                 <ExternalLink />

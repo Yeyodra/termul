@@ -22,9 +22,9 @@ export function navigateToChatSession(sessionId: string): void {
   }
 }
 
-export function navigateToRoblox(): void {
+export function navigateToRoblox(feature = 'clothing'): void {
   if (!navigateFn) return
-  if (!window.location.hash.startsWith('#/roblox')) navigateFn('/roblox/clothing')
+  if (!window.location.hash.startsWith('#/roblox')) navigateFn(`/roblox/${feature}`)
 }
 
 /**

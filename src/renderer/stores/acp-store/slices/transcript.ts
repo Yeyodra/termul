@@ -947,7 +947,6 @@ type TranscriptSliceState = Pick<
   | '_onConfigOptionsUpdate'
   | '_onSessionInfoUpdate'
   | '_onUsageUpdate'
-  | 'appendBlockToMessage'
 >
 
 export const createTranscriptSlice: StateCreator<AcpState, [], [], TranscriptSliceState> = (
@@ -1727,19 +1726,6 @@ export const createTranscriptSlice: StateCreator<AcpState, [], [], TranscriptSli
       return {
         sessionUsage: { ...s.sessionUsage, [e.sessionId]: next }
       }
-    })
-  },
-
-  appendBlockToMessage: (sessionId, messageId, block) => {
-    set((s) => {
-      const list = s.messages[sessionId]
-      if (!list) return {}
-      const index = list.findIndex((message) => message.id === messageId)
-      if (index === -1) return {}
-      const message = list[index]!
-      const messages = list.slice()
-      messages[index] = { ...message, blocks: [...message.blocks, block] }
-      return { messages: { ...s.messages, [sessionId]: messages } }
     })
   }
 })

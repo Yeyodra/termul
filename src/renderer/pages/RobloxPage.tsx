@@ -1,38 +1,35 @@
-/**
- * The Roblox surface: one page for every generator feature, opened as a route
- * rather than a tab so a relaunch can return to it.
- *
- * The page owns exactly one viewport. A shared WebGL surface was the cause of
- * three reported bugs (`640ed56e`), so the chat never mounts one and neither
- * does a second tab.
- */
-
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+﻿import { useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
+import { Layers, Palette, Sparkles } from '@/components/icons'
 import { ClothingCollection } from '@/components/roblox/ClothingCollection'
 import { cn } from '@/lib/utils'
 import { useActiveProject } from '@/stores/project-store'
 
 const FEATURES = [
-  { id: 'clothing', label: 'Clothing', icon: '👕', ready: true },
-  { id: '3d', label: '3D Generator', icon: '🧊', ready: false },
-  { id: 'vfx', label: 'VFX', icon: '✨', ready: false },
-  { id: 'gfx', label: 'GFX', icon: '🖼', ready: false },
-  { id: 'icon', label: 'Icon', icon: '🎯', ready: false },
-  { id: 'sfx', label: 'SFX', icon: '🔊', ready: false },
-  { id: 'animation', label: 'Animation', icon: '🎬', ready: false }
+  { id: 'clothing', label: 'Clothing', ready: true },
+  { id: '3d', label: '3D Generator', ready: false },
+  { id: 'vfx', label: 'VFX', ready: false },
+  { id: 'gfx', label: 'GFX', ready: false },
+  { id: 'icon', label: 'Icon', ready: false },
+  { id: 'sfx', label: 'SFX', ready: false },
+  { id: 'animation', label: 'Animation', ready: false }
 ] as const
 
 type FeatureId = (typeof FEATURES)[number]['id']
 
-const OPTION =
-  'rounded px-2 py-0.5 text-[11px] text-muted-foreground transition-colors hover:text-foreground'
-const OPTION_ON = 'bg-foreground/10 text-foreground'
-
 export default function RobloxPage(): React.JSX.Element {
   const project = useActiveProject()
   const navigate = useNavigate()
-  const [feature, setFeature] = useState<FeatureId>('clothing')
+  const params = useParams()
+  const fromRoute = (params['*'] ?? '').split('/')[0]
+  const [picked, setPicked] = useState<FeatureId | null>(null)
+  const feature: FeatureId =
+    picked ??
+    (FEATURES.some((item) => item.id === fromRoute) ? (fromRoute as FeatureId) : 'clothing')
+  const setFeature = (id: FeatureId): void => {
+    setPicked(id)
+    navigate(`/roblox/${id}`)
+  }
 
   return (
     <div className="flex h-full w-full overflow-hidden">
@@ -61,7 +58,7 @@ export default function RobloxPage(): React.JSX.Element {
               )}
             >
               <span aria-hidden="true" className="w-4 text-center">
-                {item.icon}
+                {item.ready ? <Layers size={13} /> : <Sparkles size={13} />}
               </span>
               <span className="flex-1 truncate">{item.label}</span>
               {!item.ready && (
@@ -89,6 +86,7 @@ export default function RobloxPage(): React.JSX.Element {
 
         {feature !== 'clothing' ? (
           <div className="m-auto max-w-sm text-center">
+            <Palette size={20} className="mx-auto mb-2 text-muted-foreground" />
             <p className="text-xs text-muted-foreground">
               This generator has no engine in this build yet. Only clothing is implemented.
             </p>
