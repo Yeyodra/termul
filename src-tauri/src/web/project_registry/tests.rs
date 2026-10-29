@@ -565,3 +565,35 @@ fn boundary_read_rebuilds_a_cache_that_is_behind_a_mutation() {
     assert_eq!(reg.canonical_root("p-1"), None);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// A project registered with the `\\?\` verbatim prefix must still be found by
+/// the stripped path, and the other way round.
+///
+/// This is the mismatch that made a page generation finish and then fail to save:
+/// `validate_project_path` strips the prefix so external tools accept the path,
+/// while the registry stores what the folder picker produced. Comparing one form
+/// against the other rejected every project.
+#[test]
+fn find_by_path_matches_across_the_verbatim_prefix() {
+    let reg = ProjectRegistry::new();
+    reg.set(
+        vec![
+            sample("p-verbatim", Some(r"\\?\C:\work\game"), false),
+            sample("p-plain", Some(r"C:\work\other"), false),
+        ],
+        None,
+    );
+
+    // Registered with the prefix, looked up without it.
+    assert_eq!(
+        reg.find_by_path(r"C:\work\game").as_deref(),
+        Some("p-verbatim")
+    );
+    // Registered without it, looked up with it.
+    assert_eq!(
+        reg.find_by_path(r"\\?\C:\work\other").as_deref(),
+        Some("p-plain")
+    );
+    // A folder nobody registered still matches nothing.
+    assert_eq!(reg.find_by_path(r"C:\work\missing"), None);
+}

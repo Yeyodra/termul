@@ -289,18 +289,35 @@ impl HostPlanServer {
     }
 }
 
+/// The record directory a save belongs to.
+///
+/// `recordSlug` wins when the caller knows it. That is the whole point of the
+/// field: a revision must land in the SAME record as the garment it revises, and
+/// the model's chosen name cannot be trusted for that. Asking the model to "keep
+/// the same name" is a request; a slug is a fact. Without it a user who asked for
+/// pants on top of a shirt got a second record and lost the first one's history.
+///
+/// The name is still the fallback, for an agent that only ever creates.
 fn garment_dir(fields: &serde_json::Map<String, Value>) -> String {
     let kind = fields
         .get("kind")
         .and_then(Value::as_str)
         .unwrap_or("artifact");
+    let record_slug = fields
+        .get("recordSlug")
+        .and_then(Value::as_str)
+        .map(slug)
+        .filter(|slug| !slug.is_empty());
     let name = fields
         .get("name")
         .and_then(Value::as_str)
         .map(slug)
         .filter(|slug| !slug.is_empty())
         .unwrap_or_else(|| kind.to_string());
-    format!(".termul/generated/{kind}/{name}")
+    format!(
+        ".termul/generated/{kind}/{}",
+        record_slug.unwrap_or(name)
+    )
 }
 
 /// What a save wrote, in the shape both callers report.

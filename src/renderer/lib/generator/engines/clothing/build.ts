@@ -1,4 +1,4 @@
-﻿/**
+/**
  * The clothing engine behind `designLoop`.
  *
  * `build(design)` is the validator contract: it returns a `BuildResult` on
@@ -61,7 +61,7 @@ export interface ClothingBuildOptions {
    * "Drawing layer 5 of 7" while the render runs. Absent for the agent path,
    * which only needs the finished result.
    */
-  onLayer?: (drawn: number, total: number) => void
+  onLayer?: (drawn: number, total: number, canvas: SheetCanvas) => void
 }
 
 /** Decode a data URL through an `Image`, as upstream's cached loader does. */

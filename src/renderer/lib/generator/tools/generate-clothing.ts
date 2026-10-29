@@ -1,4 +1,4 @@
-﻿/**
+/**
  * `generate_clothing` as the agent sees it: return a `task_id` immediately, then
  * poll.
  *
@@ -41,6 +41,14 @@ export interface GenerateClothingArgs {
   agentId?: string
   /** The chat that asked. */
   sessionId?: string
+  /**
+   * The record this generation revises, when it revises one.
+   *
+   * The host files a record by this slug, so a revision lands as a new version of
+   * the same item instead of a second item beside it. Set by the page composer's
+   * Apply; absent for a fresh garment.
+   */
+  recordSlug?: string
 }
 
 /** What the tool returns before the work is done. */
@@ -71,6 +79,8 @@ export interface GenerateClothingResult {
   atlas?: string
   kind?: DesignType
   name?: string
+  /** The record this generation revises, when it revises one. */
+  recordSlug?: string
   save?: { saved: boolean; path?: string; relative?: string; reason?: string }
   /** What the checks found: `ok`, the issue list, size, coverage, colours. */
   report?: unknown
@@ -103,7 +113,7 @@ export interface ClothingToolDeps {
    * "Drawing layer 5 of 7". The agent path leaves it unset: it only needs the
    * finished result.
    */
-  onLayer?: (drawn: number, total: number) => void
+  onLayer?: (drawn: number, total: number, canvas: unknown) => void
 }
 
 /**
@@ -236,6 +246,7 @@ export function readClothingResult(queue: TaskQueue, taskId: string): GenerateCl
   if (task.status === 'done') {
     const built = task.result as { result?: unknown; built?: BuildResult } | null
     const spec = built?.built?.spec as { type?: DesignType; name?: string } | undefined
+    const params = task.params as GenerateClothingArgs | undefined
     return {
       status: 'done',
       taskId,
@@ -245,6 +256,9 @@ export function readClothingResult(queue: TaskQueue, taskId: string): GenerateCl
       atlas: built?.built?.template as string | undefined,
       kind: spec?.type,
       name: spec?.name,
+      // Carried through so the host files a revision into the record it revises
+      // instead of into whatever folder the model's name happens to slug to.
+      recordSlug: params?.recordSlug,
       report: built?.built?.report,
       layout: built?.built?.layout,
       summary: `${task.title} is ready`

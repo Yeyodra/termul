@@ -157,9 +157,9 @@ function blit(ctx: CompositorTarget, sheet: RenderedSheet): void {
  * vanishing.
  *
  * `onLayer` fires after each visible layer reaches the canvas, with the 1-based
- * count and the total. RobloxKit shows "Drawing layer 5 of 7" and the sheet
- * growing behind it; without this hook the render is one opaque pass and the
- * page has nothing to show until it is already finished.
+ * count, the total, and the canvas itself. RobloxKit shows the sheet growing with
+ * "Drawing layer 5 of 7" over it; without handing out the canvas there is nothing
+ * to show, and the page stays blank for the whole render.
  *
  * The flush stays batched. A run of pattern layers is drawn in one pass, so the
  * hook reports the last layer of that run rather than every layer in it - which
@@ -170,7 +170,7 @@ export async function renderToCanvas(
   design: ClothingDesign,
   canvas: SheetCanvas,
   loadImage: ImageLoader,
-  onLayer?: (drawn: number, total: number) => void
+  onLayer?: (drawn: number, total: number, canvas: SheetCanvas) => void
 ): Promise<SheetCanvas> {
   const { width, height } = SHEET_DIMENSIONS[design.type]
   canvas.width = width
@@ -205,7 +205,7 @@ export async function renderToCanvas(
       // A pattern only becomes visible once its batch is blitted, so report it
       // when the batch ends rather than here; the count still advances so the
       // node can show "layer 3 of 7" while the batch is open.
-      onLayer?.(drawn, total)
+      onLayer?.(drawn, total, canvas)
       continue
     }
 
@@ -213,7 +213,7 @@ export async function renderToCanvas(
     // batch has to reach the canvas first.
     flush()
     await drawVectorLayer(ctx, resolveTarget(design.type, layer.target ?? 'all'), layer, loadImage)
-    onLayer?.(drawn, total)
+    onLayer?.(drawn, total, canvas)
   }
 
   flush()

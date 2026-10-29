@@ -41,8 +41,15 @@ pub async fn save_artifact(
         Err(error) => return Ok(IpcResult::error(error, "PATH_VALIDATION_FAILED")),
     };
 
-    let as_str = root.to_string_lossy().to_string();
-    if registry.find_by_path(&as_str).is_none() {
+    // `validate_project_path` strips the `\\?\` verbatim prefix so external tools
+    // accept the path, but the registry stores the path the picker produced,
+    // which still carries it. Comparing the two as-is rejected every project, so
+    // a page generation finished and then silently failed to save. Compare both
+    // forms.
+    let plain = root.to_string_lossy().to_string();
+    let verbatim = format!(r"\\?\{plain}");
+    let registered = registry.find_by_path(&plain).or_else(|| registry.find_by_path(&verbatim));
+    if registered.is_none() {
         return Ok(IpcResult::error(
             "this folder is not a registered project",
             "PROJECT_NOT_REGISTERED",

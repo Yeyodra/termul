@@ -21,12 +21,21 @@ export interface StageSnapshot {
   /** 1-based layer being drawn, or 0 before the first one. */
   layer: number
   total: number
-  /** What the engine last reported, e.g. `Design`, `Render`, `Checks`. */
+  /** What the engine last reported, e.g. Design, Render, Checks. */
   stage: string
+  /** The sheet as it is being drawn, so the page can show it growing. */
+  sheet: string | null
   error: string | null
 }
 
-const IDLE: StageSnapshot = { state: 'idle', layer: 0, total: 0, stage: '', error: null }
+const IDLE: StageSnapshot = {
+  state: 'idle',
+  layer: 0,
+  total: 0,
+  stage: '',
+  sheet: null,
+  error: null
+}
 
 interface StageStore {
   byProject: Record<string, StageSnapshot>

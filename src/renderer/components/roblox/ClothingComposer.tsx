@@ -14,6 +14,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Sparkles, Zap } from '@/components/icons'
 import { type ArtifactRecord, currentVersion } from '@/lib/artifact-records'
+import { pngDataUrl } from '@/lib/generator/engines/clothing/png'
 import type { DesignType } from '@/lib/generator/engines/clothing/schema'
 import { runPageGeneration } from '@/lib/roblox-generate'
 import { cn } from '@/lib/utils'
@@ -44,7 +45,8 @@ interface ClothingComposerProps {
   /** The garment kind to start with, so the node pipeline and the engine agree. */
   type?: DesignType
   onStage?: (stage: string) => void
-  onSettled?: () => void
+  /** Called with the slug the host wrote, so the page can open it. */
+  onSettled?: (slug: string) => void
 }
 
 export function ClothingComposer({
@@ -69,7 +71,13 @@ export function ClothingComposer({
 
   const canSend = text.trim().length > 0 && !busy
 
-  const run = async (prompt: string): Promise<void> => {
+  /**
+   * `revise` decides whether this lands as a new version of the record on screen
+   * or as a new record. It is a fact passed to the host, not a sentence in the
+   * prompt: asking the model to keep the name let it rename the garment, and a
+   * renamed garment is a different record with its own empty history.
+   */
+  const run = async (prompt: string, revise: boolean): Promise<void> => {
     if (!prompt.trim() || busy) return
     setBusy(true)
     setError(null)
@@ -82,15 +90,22 @@ export function ClothingComposer({
         projectPath,
         prompt: prompt.trim(),
         type: kind,
+        recordSlug: revise ? record?.slug : undefined,
         onStage: (stage) => {
           if (mounted.current) {
             useStageStore.getState().set(projectPath, { stage })
             onStage?.(stage)
           }
         },
-        onLayer: (drawn, total) => {
+        onLayer: (drawn, total, canvas) => {
           if (mounted.current) {
-            useStageStore.getState().set(projectPath, { layer: drawn, total })
+            useStageStore.getState().set(projectPath, {
+              layer: drawn,
+              total,
+              // The sheet as it stands right now. D12: the page is a blank
+              // template, then a 2D sheet growing, then the finished 3D avatar.
+              sheet: canvas ? pngDataUrl(canvas as Parameters<typeof pngDataUrl>[0]) : null
+            })
           }
         }
       })
@@ -98,7 +113,7 @@ export function ClothingComposer({
       if (outcome.status === 'done') {
         setText('')
         useStageStore.getState().set(projectPath, { state: 'done', stage: 'Ready' })
-        onSettled?.()
+        onSettled?.(outcome.saved.slug)
       } else if (outcome.status === 'failed') {
         setError(outcome.error)
         useStageStore.getState().set(projectPath, { state: 'error', error: outcome.error })
@@ -123,7 +138,7 @@ export function ClothingComposer({
           onKeyDown={(event) => {
             if (event.key !== 'Enter' || event.shiftKey) return
             event.preventDefault()
-            if (canSend) void run(record ? revisionPrompt(record, text) : text)
+            if (canSend) void run(record ? revisionPrompt(record, text) : text, record !== null)
           }}
           placeholder={
             record
@@ -156,9 +171,13 @@ export function ClothingComposer({
           type="button"
           disabled={!canSend || !record}
           onClick={() => {
-            if (record) void run(revisionPrompt(record, text))
+            if (record) void run(revisionPrompt(record, text), true)
           }}
-          title={record ? 'Revise the garment on screen' : 'Pick a garment first'}
+          title={
+            record
+              ? 'Add this change as a new version of the garment on screen'
+              : 'Pick a garment first'
+          }
           className="flex h-8 shrink-0 items-center gap-1 rounded-md border border-border px-2 text-xs text-secondary-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:opacity-40"
         >
           <Sparkles size={12} aria-hidden="true" />
@@ -166,8 +185,9 @@ export function ClothingComposer({
         </button>
         <button
           type="button"
-          disabled={!canSend}
-          onClick={() => void run(text)}
+          disabled={!canSend || busy}
+          onClick={() => void run(text, record !== null)}
+          title="Draw with the kind picked above"
           className="flex h-8 shrink-0 items-center gap-1 rounded-md bg-primary px-2 text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-40"
         >
           <Zap size={12} aria-hidden="true" />

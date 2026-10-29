@@ -537,3 +537,58 @@ fn a_page_write_with_a_broken_atlas_is_refused() {
     assert!(error.contains("base64"), "{error}");
     assert!(!project.join(".termul").exists());
 }
+/// A revision lands in the record it revises, even when the model renames it.
+///
+/// This is the bug a user hit: they asked for pants on top of a shirt, the model
+/// returned a new name, and the save created a second record - the first one's
+/// version history looked gone because the page was now showing a different item.
+/// `recordSlug` is the fact that prevents it; the prompt asking nicely was not.
+#[test]
+fn a_revision_stays_in_its_record_when_the_model_renames_it() {
+    let root = std::env::temp_dir().join(format!("termul-page-{}", uuid::Uuid::new_v4()));
+    let project = root.join("project");
+    std::fs::create_dir_all(&project).unwrap();
+
+    save_artifact_result(&project, &artifact_result("Green Tee", b"one")).unwrap();
+
+    let mut renamed = artifact_result("Green Tee With Pants", b"two");
+    renamed["recordSlug"] = serde_json::json!("green-tee");
+    let saved = save_artifact_result(&project, &renamed).unwrap();
+
+    assert_eq!(saved.slug, "green-tee", "the revision kept the record");
+    assert_eq!(saved.version, 2, "it became the second version");
+
+    let item =
+        std::fs::read_to_string(project.join(".termul/generated/shirt/green-tee/item.json")).unwrap();
+    let record: Value = serde_json::from_str(&item).unwrap();
+    assert_eq!(record["versions"].as_array().unwrap().len(), 2);
+    assert_eq!(record["current"], 2);
+
+    assert!(
+        !project
+            .join(".termul/generated/shirt/green-tee-with-pants")
+            .exists(),
+        "no second record was created"
+    );
+}
+
+/// Without `recordSlug` a differently named save is a new record, which is what
+/// an agent creating a fresh garment wants.
+#[test]
+fn a_save_without_a_record_slug_creates_a_new_record() {
+    let root = std::env::temp_dir().join(format!("termul-page-{}", uuid::Uuid::new_v4()));
+    let project = root.join("project");
+    std::fs::create_dir_all(&project).unwrap();
+
+    save_artifact_result(&project, &artifact_result("Green Tee", b"one")).unwrap();
+    let saved = save_artifact_result(&project, &artifact_result("Blue Jeans", b"two")).unwrap();
+
+    assert_eq!(saved.slug, "blue-jeans");
+    assert_eq!(saved.version, 1);
+    assert!(project
+        .join(".termul/generated/shirt/green-tee/item.json")
+        .exists());
+    assert!(project
+        .join(".termul/generated/shirt/blue-jeans/item.json")
+        .exists());
+}

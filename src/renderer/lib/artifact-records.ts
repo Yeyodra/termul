@@ -314,7 +314,9 @@ export async function readStillDataUrl(
  * The write goes through `copyFile`, not `writeFile`: the latter takes text, so
  * handing it base64 would produce a PNG of the base64 string.
  *
- * Returns the absolute path written.
+ * Returns the path RELATIVE to the project, because that is what the user should
+ * read: an absolute path here printed this machine's home directory, which is
+ * wrong the moment the project moves or another person opens it.
  */
 export async function savePng(record: ArtifactRecord): Promise<string> {
   const version = currentVersion(record)
@@ -327,11 +329,12 @@ export async function savePng(record: ArtifactRecord): Promise<string> {
     .replace(/[^a-z0-9_-]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 40)
-  const target = joinPath(root, `${name || 'clothing'}.png`)
+  const relative = `${name || 'clothing'}.png`
+  const target = joinPath(root, relative)
 
   const written = await filesystemApi.copyFile(source, target)
   if (!written.success) {
     throw new Error(written.error ?? 'could not write the PNG')
   }
-  return target
+  return relative
 }

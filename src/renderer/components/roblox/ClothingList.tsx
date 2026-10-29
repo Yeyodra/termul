@@ -12,7 +12,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Layers } from '@/components/icons'
+import { Layers, Plus } from '@/components/icons'
 import { type ArtifactRecord, currentVersion } from '@/lib/artifact-records'
 import {
   DEFAULT_ROBLOX_FEATURE,
@@ -26,7 +26,7 @@ import {
   useRecordStill,
   useRobloxRecordsStore
 } from '@/stores/roblox-records-store'
-import { pickSlug, usePickedSlug } from '@/stores/roblox-selection-store'
+import { pickSlug, startDraft, usePickedSlug } from '@/stores/roblox-selection-store'
 import { RobloxGenerators } from './RobloxGenerators'
 
 interface ClothingRowProps {
@@ -148,21 +148,35 @@ export function ClothingList({
               <span className="text-2xs text-muted-foreground">
                 {shown.length} {shown.length === 1 ? 'item' : 'items'}
               </span>
-              <label className="flex items-center gap-1 text-2xs text-muted-foreground">
-                <span className="sr-only">Filter by kind</span>
-                <select
-                  value={kind}
-                  onChange={(event) => setKind(event.target.value)}
-                  className="h-6 rounded border border-border/60 bg-card px-1 text-2xs text-foreground focus-visible:border-ring focus-visible:outline-hidden"
+              <div className="flex items-center gap-1.5">
+                <label className="flex items-center gap-1 text-2xs text-muted-foreground">
+                  <span className="sr-only">Filter by kind</span>
+                  <select
+                    value={kind}
+                    onChange={(event) => setKind(event.target.value)}
+                    className="h-6 rounded border border-border/60 bg-card px-1 text-2xs text-foreground focus-visible:border-ring focus-visible:outline-hidden"
+                  >
+                    <option value="all">All kinds</option>
+                    {kinds.map((entry) => (
+                      <option key={entry} value={entry}>
+                        {kindLabel(entry)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    startDraft(projectPath)
+                    navigate(featurePath(feature))
+                  }}
+                  title="Start a new garment"
+                  className="flex h-6 items-center gap-1 rounded border border-border/60 px-1.5 text-2xs text-secondary-foreground transition-colors hover:bg-muted hover:text-foreground"
                 >
-                  <option value="all">All kinds</option>
-                  {kinds.map((entry) => (
-                    <option key={entry} value={entry}>
-                      {kindLabel(entry)}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  <Plus size={10} aria-hidden="true" />
+                  New
+                </button>
+              </div>
             </div>
           </div>
 

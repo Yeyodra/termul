@@ -27,10 +27,15 @@ import { refreshLoadedProjects } from '@/stores/roblox-records-store'
 /** How often the page polls its own task while it runs. */
 const POLL_MS = 700
 
+/** Fired as each visible layer reaches the sheet, with the sheet so far. */
+export type LayerProgress = (drawn: number, total: number, canvas: unknown) => void
+
 export interface StartOptions {
   projectPath: string
   prompt: string
   type: DesignType
+  /** The record this generation revises, when it revises one. */
+  recordSlug?: string
 }
 
 export interface SavedArtifact {
@@ -58,14 +63,15 @@ export type PageGeneration =
 export function startPageGeneration({
   prompt,
   type,
+  recordSlug,
   onLayer
-}: StartOptions & { onLayer?: (drawn: number, total: number) => void }): PageGeneration {
+}: StartOptions & { onLayer?: LayerProgress }): PageGeneration {
   const deps = pageGenerator()
   if (!deps) {
     return { status: 'unavailable', reason: 'the generator engine is not ready yet' }
   }
   deps.clothing.onLayer = onLayer
-  const accepted = queueGenerateClothing(deps.clothing, { type, prompt })
+  const accepted = queueGenerateClothing(deps.clothing, { type, prompt, recordSlug })
   return { status: 'queued', taskId: accepted.taskId }
 }
 
@@ -84,6 +90,11 @@ export function pollPageGeneration(taskId: string): GenerateClothingResult {
  * Desktop only: on the web client there is no binary write path, and the project
  * folders belong to the host process. The caller falls back to sending the
  * prompt to the agent there.
+ *
+ * A rejection here is the difference between "the picture was drawn" and "the
+ * garment exists", so the message has to survive to the user. `invoke` rejects
+ * with the command's own error string, which is not always an `Error`, so it is
+ * wrapped rather than trusted to stringify well.
  */
 export async function saveArtifact(
   projectPath: string,
@@ -92,19 +103,29 @@ export async function saveArtifact(
   if (!isTauriContext()) {
     throw new Error('saving from a page is desktop-only')
   }
-  const written = await invoke<SavedArtifact>('save_artifact', {
-    projectPath,
-    result
-  })
-  refreshLoadedProjects()
-  return written
+  try {
+    const written = await invoke<SavedArtifact>('save_artifact', {
+      projectPath,
+      result
+    })
+    refreshLoadedProjects()
+    return written
+  } catch (cause) {
+    const detail =
+      typeof cause === 'string'
+        ? cause
+        : cause instanceof Error
+          ? cause.message
+          : JSON.stringify(cause)
+    throw new Error(`the garment was drawn but not saved: ${detail}`)
+  }
 }
 
 export interface RunOptions extends StartOptions {
   /** Called with every stage the engine reports, for the node pipeline. */
   onStage?: (stage: string, detail: string | null) => void
   /** Called as each layer reaches the sheet, for "Drawing layer 5 of 7". */
-  onLayer?: (drawn: number, total: number) => void
+  onLayer?: LayerProgress
 }
 
 export type RunOutcome =
@@ -124,6 +145,7 @@ export async function runPageGeneration(options: RunOptions): Promise<RunOutcome
     projectPath: options.projectPath,
     prompt: options.prompt,
     type: options.type,
+    recordSlug: options.recordSlug,
     onLayer: options.onLayer
   })
   if (started.status === 'unavailable') {

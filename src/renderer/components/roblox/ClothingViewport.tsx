@@ -23,7 +23,7 @@ import {
   useRecordAtlas,
   useRobloxRecordsStore
 } from '@/stores/roblox-records-store'
-import { usePickedSlug } from '@/stores/roblox-selection-store'
+import { pickSlug, useIsDraft, usePickedSlug } from '@/stores/roblox-selection-store'
 import { progressLine, useStage } from '@/stores/roblox-stage-store'
 import { ClothingComposer } from './ClothingComposer'
 import { NodePipeline } from './NodePipeline'
@@ -77,6 +77,7 @@ interface ClothingViewportProps {
 export function ClothingViewport({ projectPath }: ClothingViewportProps): React.JSX.Element {
   const records = useProjectRecords(projectPath)
   const picked = usePickedSlug(projectPath)
+  const draft = useIsDraft(projectPath)
   const load = useRobloxRecordsStore((state) => state.load)
   const refresh = useRobloxRecordsStore((state) => state.refresh)
   const stage = useStage(projectPath)
@@ -88,9 +89,10 @@ export function ClothingViewport({ projectPath }: ClothingViewportProps): React.
   }, [load, projectPath])
 
   const active = useMemo(() => {
+    if (draft) return null
     if (!records || records.length === 0) return null
     return records.find((record) => record.slug === picked) ?? records[0] ?? null
-  }, [records, picked])
+  }, [draft, records, picked])
 
   const atlas = useRecordAtlas(projectPath, active)
   const version = active ? currentVersion(active) : null
@@ -146,15 +148,32 @@ export function ClothingViewport({ projectPath }: ClothingViewportProps): React.
           onOpenTab={setTab}
         />
         <div className="relative flex min-h-0 flex-1 flex-col">
-          <ArtifactViewportPanel
-            artifact={artifact}
-            placeholder={
-              active
-                ? `Reading v${version?.n ?? 1}…`
-                : 'Pick a garment in the Roblox panel to see it in 3D.'
-            }
-            className="min-h-0 flex-1"
-          />
+          {/* D12: a blank template, then the 2D sheet growing, then the finished
+              3D avatar. The 2D sheet replaces the viewport while it draws because
+              a half-dressed avatar cannot show progress - the layers land on the
+              flat atlas, not on the model. */}
+          {stage.state === 'running' && stage.sheet ? (
+            <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-[#0e0f13] p-3">
+              <img
+                src={stage.sheet}
+                alt="The garment being drawn"
+                className="max-h-full max-w-full object-contain"
+                style={{ imageRendering: 'pixelated' }}
+              />
+            </div>
+          ) : (
+            <ArtifactViewportPanel
+              artifact={artifact}
+              placeholder={
+                active
+                  ? `Reading v${version?.n ?? 1}.`
+                  : draft
+                    ? 'Describe a garment below and press Make it.'
+                    : 'Pick a garment in the Roblox panel to see it in 3D.'
+              }
+              className="min-h-0 flex-1"
+            />
+          )}
           {progress && (
             <p
               aria-live="polite"
@@ -190,7 +209,10 @@ export function ClothingViewport({ projectPath }: ClothingViewportProps): React.
           projectPath={projectPath}
           record={active}
           type={type}
-          onSettled={() => refresh(projectPath)}
+          onSettled={(slug) => {
+            pickSlug(projectPath, slug)
+            refresh(projectPath)
+          }}
         />
       </div>
 

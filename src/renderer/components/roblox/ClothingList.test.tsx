@@ -58,7 +58,7 @@ describe('ClothingList', () => {
     mocks.readStillDataUrl.mockReset()
     mocks.readAtlasDataUrl.mockResolvedValue('data:image/png;base64,AAAA')
     mocks.readStillDataUrl.mockResolvedValue(null)
-    useRobloxSelectionStore.setState({ pickedByProject: {} })
+    useRobloxSelectionStore.setState({ pickedByProject: {}, draftByProject: {} })
     useRobloxRecordsStore.setState({
       recordsByProject: {},
       loaded: {},
@@ -158,5 +158,33 @@ describe('ClothingList', () => {
 
     expect(await screen.findByRole('button', { name: /Clothing/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Animation/ })).toBeDisabled()
+  })
+
+  it('starts a blank garment from New, without touching the pick', async () => {
+    mocks.loadArtifactRecords.mockResolvedValue([record('royal-robe')])
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <ClothingList projectPath="/p" />
+        <LocationProbe />
+      </MemoryRouter>
+    )
+
+    const newButton = await screen.findByRole('button', { name: 'New' })
+    fireEvent.click(newButton)
+
+    // A draft is its own state: the collection keeps a pick, the page ignores it.
+    expect(useRobloxSelectionStore.getState().draftByProject['/p']).toBe(true)
+    await waitFor(() =>
+      expect(screen.getByTestId('location')).toHaveTextContent('/roblox/clothing')
+    )
+  })
+
+  it('ends the draft when a row is picked again', async () => {
+    mocks.loadArtifactRecords.mockResolvedValue([record('royal-robe')])
+    useRobloxSelectionStore.setState({ draftByProject: { '/p': true } })
+    renderList()
+
+    fireEvent.click(await screen.findByText('royal-robe'))
+    expect(useRobloxSelectionStore.getState().draftByProject['/p']).toBeUndefined()
   })
 })
