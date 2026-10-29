@@ -34,7 +34,9 @@ mod ask;
 mod canvas;
 mod generator;
 pub use ask::IdleSignal;
-pub use generator::{GeneratorReplyPayload, EVENT_GENERATOR_CALL};
+pub use generator::{
+    save_artifact_result, GeneratorReplyPayload, SavedArtifact, EVENT_GENERATOR_CALL,
+};
 use ask::PendingAsk;
 use generator::PendingGenerator;
 

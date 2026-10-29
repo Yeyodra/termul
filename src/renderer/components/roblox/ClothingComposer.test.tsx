@@ -1,33 +1,16 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ArtifactRecord } from '@/lib/artifact-records'
 import { ClothingComposer, revisionPrompt } from './ClothingComposer'
 
 const { mocks } = vi.hoisted(() => ({
   mocks: {
-    project: undefined as unknown,
-    write: vi.fn(),
-    showAgentLauncher: vi.fn(),
-    activePaneId: 'pane-1' as string | null
+    runPageGeneration: vi.fn()
   }
 }))
 
-vi.mock('@/stores/project-store', () => ({
-  useActiveProject: () => mocks.project
-}))
-
-vi.mock('@/lib/api', () => ({
-  persistenceApi: { write: mocks.write }
-}))
-
-vi.mock('@/stores/workspace-store', () => ({
-  useWorkspaceStore: {
-    getState: () => ({
-      activePaneId: mocks.activePaneId,
-      showAgentLauncher: mocks.showAgentLauncher
-    })
-  }
+vi.mock('@/lib/roblox-generate', () => ({
+  runPageGeneration: mocks.runPageGeneration
 }))
 
 function record(overrides: Partial<ArtifactRecord> = {}): ArtifactRecord {
@@ -47,12 +30,9 @@ function record(overrides: Partial<ArtifactRecord> = {}): ArtifactRecord {
   }
 }
 
-function renderComposer(current: ArtifactRecord | null = record()): void {
-  render(
-    <MemoryRouter initialEntries={['/']}>
-      <ClothingComposer record={current} />
-    </MemoryRouter>
-  )
+function renderComposer(current: ArtifactRecord | null = record(), onSettled = vi.fn()) {
+  render(<ClothingComposer projectPath="/p" record={current} onSettled={onSettled} />)
+  return { onSettled }
 }
 
 describe('revisionPrompt', () => {
@@ -72,30 +52,37 @@ describe('revisionPrompt', () => {
 
 describe('ClothingComposer', () => {
   beforeEach(() => {
-    mocks.project = { id: 'p1', name: 'termul', path: '/p' }
-    mocks.write.mockReset()
-    mocks.write.mockResolvedValue({ success: true, data: undefined })
-    mocks.showAgentLauncher.mockReset()
-    mocks.activePaneId = 'pane-1'
+    mocks.runPageGeneration.mockReset()
+    mocks.runPageGeneration.mockResolvedValue({
+      status: 'done',
+      saved: {
+        slug: 'green-tee',
+        version: 1,
+        path: '/p/x.png',
+        relative: 'x.png',
+        itemPath: '/p/i.json'
+      }
+    })
   })
 
   it('keeps both actions disabled until something is typed', () => {
     renderComposer()
-    expect(screen.getByRole('button', { name: 'Apply' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: /New/ })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /Make it/ })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /Apply/ })).toBeDisabled()
   })
 
-  it('sends a new garment through the launcher draft', async () => {
+  it('generates from the page itself, with no chat involved', async () => {
     renderComposer()
     fireEvent.change(screen.getByLabelText('Describe a garment'), {
-      target: { value: 'a blue parka' }
+      target: { value: 'a green tee' }
     })
-    fireEvent.click(screen.getByRole('button', { name: /New/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Make it/ }))
 
     await waitFor(() =>
-      expect(mocks.write).toHaveBeenCalledWith('last-launch-draft/p1', 'a blue parka')
+      expect(mocks.runPageGeneration).toHaveBeenCalledWith(
+        expect.objectContaining({ projectPath: '/p', prompt: 'a green tee', type: 'shirt' })
+      )
     )
-    expect(mocks.showAgentLauncher).toHaveBeenCalledWith('pane-1')
   })
 
   it('sends Apply as a revision of the garment on screen', async () => {
@@ -103,27 +90,71 @@ describe('ClothingComposer', () => {
     fireEvent.change(screen.getByLabelText('Describe a garment'), {
       target: { value: 'thinner stripes' }
     })
-    fireEvent.click(screen.getByRole('button', { name: 'Apply' }))
+    fireEvent.click(screen.getByRole('button', { name: /Apply/ }))
 
-    await waitFor(() => expect(mocks.write).toHaveBeenCalledTimes(1))
-    const [, text] = mocks.write.mock.calls[0] as [string, string]
-    expect(text).toContain('Revise the existing garment')
-    expect(text).toContain('thinner stripes')
+    await waitFor(() => expect(mocks.runPageGeneration).toHaveBeenCalledTimes(1))
+    const [options] = mocks.runPageGeneration.mock.calls[0] as [{ prompt: string }]
+    expect(options.prompt).toContain('Revise the existing garment')
+    expect(options.prompt).toContain('thinner stripes')
   })
 
   it('disables Apply while no garment is picked', () => {
     renderComposer(null)
     fireEvent.change(screen.getByLabelText('Describe a garment'), { target: { value: 'x' } })
-    expect(screen.getByRole('button', { name: 'Apply' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: /New/ })).toBeEnabled()
+    expect(screen.getByRole('button', { name: /Apply/ })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /Make it/ })).toBeEnabled()
   })
 
-  it('does nothing without a project', async () => {
-    mocks.project = undefined
+  it('lets the kind be picked before generating', async () => {
+    renderComposer()
+    fireEvent.click(screen.getByRole('button', { name: 'Pants' }))
+    fireEvent.change(screen.getByLabelText('Describe a garment'), {
+      target: { value: 'blue jeans' }
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Make it/ }))
+
+    await waitFor(() =>
+      expect(mocks.runPageGeneration).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'pants' })
+      )
+    )
+  })
+
+  it('tells the page to re-read the project once a garment lands', async () => {
+    const { onSettled } = renderComposer()
+    fireEvent.change(screen.getByLabelText('Describe a garment'), { target: { value: 'a hat' } })
+    fireEvent.click(screen.getByRole('button', { name: /Make it/ }))
+
+    await waitFor(() => expect(onSettled).toHaveBeenCalled())
+  })
+
+  it('clears the field after a garment lands', async () => {
+    renderComposer()
+    const field = screen.getByLabelText('Describe a garment')
+    fireEvent.change(field, { target: { value: 'a green tee' } })
+    fireEvent.click(screen.getByRole('button', { name: /Make it/ }))
+
+    await waitFor(() => expect(field).toHaveValue(''))
+  })
+
+  it('shows why a generation failed instead of pretending it worked', async () => {
+    mocks.runPageGeneration.mockResolvedValue({ status: 'failed', error: 'the model ran out' })
     renderComposer()
     fireEvent.change(screen.getByLabelText('Describe a garment'), { target: { value: 'a hat' } })
-    expect(screen.getByRole('button', { name: /New/ })).toBeDisabled()
-    expect(mocks.write).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: /Make it/ }))
+
+    expect(await screen.findByText('the model ran out')).toBeInTheDocument()
+  })
+
+  it('keeps the prompt when the generation was cancelled', async () => {
+    mocks.runPageGeneration.mockResolvedValue({ status: 'cancelled' })
+    renderComposer()
+    const field = screen.getByLabelText('Describe a garment')
+    fireEvent.change(field, { target: { value: 'a hat' } })
+    fireEvent.click(screen.getByRole('button', { name: /Make it/ }))
+
+    await waitFor(() => expect(mocks.runPageGeneration).toHaveBeenCalled())
+    expect(field).toHaveValue('a hat')
   })
 
   it('sends on Enter', async () => {
@@ -132,26 +163,6 @@ describe('ClothingComposer', () => {
     fireEvent.change(field, { target: { value: 'a green tee' } })
     fireEvent.keyDown(field, { key: 'Enter' })
 
-    await waitFor(() =>
-      expect(mocks.write).toHaveBeenCalledWith('last-launch-draft/p1', 'a green tee')
-    )
-  })
-
-  it('clears the field after handing the prompt over', async () => {
-    renderComposer()
-    const field = screen.getByLabelText('Describe a garment')
-    fireEvent.change(field, { target: { value: 'a green tee' } })
-    fireEvent.click(screen.getByRole('button', { name: /New/ }))
-
-    await waitFor(() => expect(field).toHaveValue(''))
-  })
-
-  it('still opens the launcher when the draft write fails', async () => {
-    mocks.write.mockRejectedValue(new Error('store unavailable'))
-    renderComposer()
-    fireEvent.change(screen.getByLabelText('Describe a garment'), { target: { value: 'a hat' } })
-    fireEvent.click(screen.getByRole('button', { name: /New/ }))
-
-    await waitFor(() => expect(mocks.showAgentLauncher).toHaveBeenCalledWith('pane-1'))
+    await waitFor(() => expect(mocks.runPageGeneration).toHaveBeenCalledTimes(1))
   })
 })

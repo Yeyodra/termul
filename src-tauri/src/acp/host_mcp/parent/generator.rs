@@ -303,6 +303,59 @@ fn garment_dir(fields: &serde_json::Map<String, Value>) -> String {
     format!(".termul/generated/{kind}/{name}")
 }
 
+/// What a save wrote, in the shape both callers report.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedArtifact {
+    pub slug: String,
+    pub version: u64,
+    pub path: String,
+    pub relative: String,
+    pub item_path: String,
+}
+
+/// Write a finished artifact into `root`, without a session.
+///
+/// This is the seam the page composer uses. `save_generated_garment` is reachable
+/// only from `answer_generator_call`, which needs an agent's tool call parked and
+/// waiting, so a user typing on a feature page had no way to produce a record
+/// without going through a chat. The write itself is the same one, under the same
+/// lock, so the two paths cannot disagree about how a record is laid out.
+///
+/// `result` is the engine's finished result, exactly as the renderer reports it
+/// for a poll: `atlas`, optional `image`, `kind`, `name`, `prompt`, `design`,
+/// `report`. Returns the write note, or an error string the caller shows.
+pub fn save_artifact_result(
+    root: &std::path::Path,
+    result: &Value,
+) -> Result<SavedArtifact, String> {
+    let fields = result
+        .as_object()
+        .ok_or_else(|| "the result is not an object".to_string())?;
+
+    let atlas = fields
+        .get("atlas")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "the result carries no atlas".to_string())?;
+    let bytes = decode_data_url(atlas)?;
+
+    let still = fields
+        .get("image")
+        .and_then(Value::as_str)
+        .and_then(|url| decode_data_url(url).ok());
+    let version = version_fields(fields);
+    let record_dir = garment_dir(fields);
+
+    let saved = write_record(root, &record_dir, &bytes, still.as_deref(), version)?;
+    Ok(SavedArtifact {
+        slug: saved.slug,
+        version: saved.version,
+        path: saved.atlas_absolute,
+        relative: saved.atlas_relative,
+        item_path: saved.item_absolute,
+    })
+}
+
 fn version_fields(fields: &serde_json::Map<String, Value>) -> Value {
     let text = |key: &str| fields.get(key).and_then(Value::as_str).map(str::to_string);
     serde_json::json!({

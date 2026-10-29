@@ -152,7 +152,12 @@ export function ClothingViewport({ projectPath }: ClothingViewportProps): React.
             </div>
           </dl>
         ) : null}
-        <ClothingComposer record={active} />
+        <ClothingComposer
+          projectPath={projectPath}
+          record={active}
+          type={type}
+          onSettled={() => refresh(projectPath)}
+        />
       </div>
 
       <RobloxInspector record={active} version={version} paint={paint} onRestore={handleRestore} />

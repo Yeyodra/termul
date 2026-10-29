@@ -453,3 +453,87 @@ fn a_saved_garment_announces_its_slug_and_version_to_the_renderer() {
     assert!(uri.starts_with("file://"), "{uri}");
     assert!(uri.ends_with("v1.still.png"), "{uri}");
 }
+// --- the session-less write a feature page uses --------------------------
+
+fn artifact_result(name: &str, atlas: &[u8]) -> Value {
+    use base64::Engine as _;
+    let encoded = base64::engine::general_purpose::STANDARD.encode(atlas);
+    serde_json::json!({
+        "kind": "shirt",
+        "name": name,
+        "prompt": "a green tee",
+        "design": { "type": "shirt", "layers": [] },
+        "atlas": format!("data:image/png;base64,{encoded}"),
+        "image": format!("data:image/png;base64,{encoded}"),
+        "report": { "ok": true },
+    })
+}
+
+#[test]
+fn a_page_can_write_an_artifact_without_a_session() {
+    let root = std::env::temp_dir().join(format!("termul-page-{}", uuid::Uuid::new_v4()));
+    let project = root.join("project");
+    std::fs::create_dir_all(&project).unwrap();
+
+    let saved = save_artifact_result(&project, &artifact_result("Green Tee", b"png")).unwrap();
+    assert_eq!(saved.slug, "green-tee");
+    assert_eq!(saved.version, 1);
+
+    let item = std::fs::read_to_string(project.join(".termul/generated/shirt/green-tee/item.json"))
+        .expect("item.json written");
+    let record: Value = serde_json::from_str(&item).unwrap();
+    assert_eq!(record["current"], 1);
+    assert_eq!(record["slug"], "green-tee");
+    assert_eq!(record["versions"][0]["prompt"], "a green tee");
+    assert_eq!(record["versions"][0]["ok"], true);
+
+    assert!(project
+        .join(".termul/generated/shirt/green-tee/v1.png")
+        .exists());
+    assert!(project
+        .join(".termul/generated/shirt/green-tee/v1.still.png")
+        .exists());
+}
+
+#[test]
+fn a_second_page_write_appends_a_version_instead_of_a_second_item() {
+    let root = std::env::temp_dir().join(format!("termul-page-{}", uuid::Uuid::new_v4()));
+    let project = root.join("project");
+    std::fs::create_dir_all(&project).unwrap();
+
+    save_artifact_result(&project, &artifact_result("Green Tee", b"one")).unwrap();
+    let saved = save_artifact_result(&project, &artifact_result("Green Tee", b"two")).unwrap();
+
+    assert_eq!(saved.version, 2);
+    let item = std::fs::read_to_string(project.join(".termul/generated/shirt/green-tee/item.json"))
+        .unwrap();
+    let record: Value = serde_json::from_str(&item).unwrap();
+    assert_eq!(record["current"], 2);
+    assert_eq!(record["versions"].as_array().unwrap().len(), 2);
+}
+
+#[test]
+fn a_page_write_without_an_atlas_is_refused_before_touching_the_disk() {
+    let root = std::env::temp_dir().join(format!("termul-page-{}", uuid::Uuid::new_v4()));
+    let project = root.join("project");
+    std::fs::create_dir_all(&project).unwrap();
+
+    let error = save_artifact_result(&project, &serde_json::json!({ "kind": "shirt" })).unwrap_err();
+    assert!(error.contains("no atlas"), "{error}");
+    assert!(!project.join(".termul").exists(), "nothing was written");
+}
+
+#[test]
+fn a_page_write_with_a_broken_atlas_is_refused() {
+    let root = std::env::temp_dir().join(format!("termul-page-{}", uuid::Uuid::new_v4()));
+    let project = root.join("project");
+    std::fs::create_dir_all(&project).unwrap();
+
+    let error = save_artifact_result(
+        &project,
+        &serde_json::json!({ "kind": "shirt", "name": "x", "atlas": "data:image/png;base64,!!" }),
+    )
+    .unwrap_err();
+    assert!(error.contains("base64"), "{error}");
+    assert!(!project.join(".termul").exists());
+}

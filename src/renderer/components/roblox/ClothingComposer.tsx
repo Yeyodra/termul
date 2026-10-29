@@ -1,55 +1,35 @@
 /**
- * The page composer: describe a garment without leaving the Roblox surface.
+ * The page composer: describe a garment and get it, without leaving the page.
  *
- * It does not generate anything itself. A record is written by the host, and the
- * host only writes one when an agent's tool call finishes, so the composer hands
- * the prompt to the agent launcher and lets the normal path run. That is also
- * what keeps this honest: the collection cannot contain a record no agent made.
+ * This is the 1:1 of RobloxKit's composer, which calls its own engine and writes
+ * the item itself. Termul runs the same engine here and asks the host to write
+ * the record, because the host owns the project folder and the only checked
+ * binary-write path. The user experience is the same: type, press Make, watch the
+ * viewport fill in, and the garment lands in the collection on this page.
  *
- * The handoff is `PersistenceKeys.lastLaunchDraft`, which `AgentLauncher`
- * already hydrates from on mount. Writing it before opening the launcher means
- * the user finds their text in the composer instead of an empty box, with no new
- * store and no new IPC.
+ * Two buttons, mirroring the panel this ports: `Make it` starts from the prompt
+ * alone, and `Apply` revises the garment on screen, which needs a record to exist.
  */
 
-import { PersistenceKeys } from '@shared/types/persistence.types'
 import { useEffect, useRef, useState } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
-import { Sparkles } from '@/components/icons'
-import { persistenceApi } from '@/lib/api'
+import { Sparkles, Zap } from '@/components/icons'
 import { type ArtifactRecord, currentVersion } from '@/lib/artifact-records'
-import { useActiveProject } from '@/stores/project-store'
-import { useWorkspaceStore } from '@/stores/workspace-store'
+import type { DesignType } from '@/lib/generator/engines/clothing/schema'
+import { runPageGeneration } from '@/lib/roblox-generate'
+import { cn } from '@/lib/utils'
 
-/** Write the draft, then open the launcher on the workspace route. */
-async function handOff(
-  projectId: string,
-  text: string,
-  pathname: string,
-  go: (path: string) => void
-): Promise<void> {
-  await persistenceApi.write(PersistenceKeys.lastLaunchDraft(projectId), text).catch(() => {})
-  const open = (): void => {
-    const paneId = useWorkspaceStore.getState().activePaneId
-    if (paneId) useWorkspaceStore.getState().showAgentLauncher(paneId)
-  }
-  // The launcher overlay only renders on the workspace route, so leave the
-  // Roblox page first when the composer was used from there.
-  if (pathname !== '/') {
-    go('/')
-    requestAnimationFrame(open)
-  } else {
-    open()
-  }
-}
+const TYPES: Array<{ id: DesignType; label: string }> = [
+  { id: 'shirt', label: 'Shirt' },
+  { id: 'pants', label: 'Pants' },
+  { id: 'tshirt', label: 'T-shirt' }
+]
 
 /**
  * What `Apply` asks for: a revision of the garment on screen.
  *
  * The name is named on purpose. The host files a record by the name the model
  * returns, so asking for the same name is what makes this land as a new version
- * of the same item rather than a second item beside it. `O3` (`item_id`) would
- * make that exact instead of requested.
+ * of the same item instead of a second item beside it.
  */
 export function revisionPrompt(record: ArtifactRecord, change: string): string {
   const version = currentVersion(record)
@@ -58,15 +38,25 @@ export function revisionPrompt(record: ArtifactRecord, change: string): string {
 }
 
 interface ClothingComposerProps {
+  projectPath: string
   record: ArtifactRecord | null
+  /** The garment kind to start with, so the node pipeline and the engine agree. */
+  type?: DesignType
+  onStage?: (stage: string) => void
+  onSettled?: () => void
 }
 
-export function ClothingComposer({ record }: ClothingComposerProps): React.JSX.Element {
-  const project = useActiveProject()
-  const navigate = useNavigate()
-  const pathname = useLocation().pathname
+export function ClothingComposer({
+  projectPath,
+  record,
+  type = 'shirt',
+  onStage,
+  onSettled
+}: ClothingComposerProps): React.JSX.Element {
   const [text, setText] = useState('')
+  const [kind, setKind] = useState<DesignType>(type)
   const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const mounted = useRef(true)
 
   useEffect(() => {
@@ -76,16 +66,34 @@ export function ClothingComposer({ record }: ClothingComposerProps): React.JSX.E
     }
   }, [])
 
-  const canSend = Boolean(project?.id) && text.trim().length > 0 && !busy
+  const canSend = text.trim().length > 0 && !busy
 
-  const send = async (prompt: string): Promise<void> => {
-    if (!project?.id || !prompt.trim() || busy) return
+  const run = async (prompt: string): Promise<void> => {
+    if (!prompt.trim() || busy) return
     setBusy(true)
+    setError(null)
+    onStage?.('starting')
     try {
-      await handOff(project.id, prompt.trim(), pathname, navigate)
-      if (mounted.current) setText('')
+      const outcome = await runPageGeneration({
+        projectPath,
+        prompt: prompt.trim(),
+        type: kind,
+        onStage: (stage) => {
+          if (mounted.current) onStage?.(stage)
+        }
+      })
+      if (!mounted.current) return
+      if (outcome.status === 'done') {
+        setText('')
+        onSettled?.()
+      } else if (outcome.status === 'failed') {
+        setError(outcome.error)
+      }
     } finally {
-      if (mounted.current) setBusy(false)
+      if (mounted.current) {
+        setBusy(false)
+        onStage?.('idle')
+      }
     }
   }
 
@@ -99,38 +107,58 @@ export function ClothingComposer({ record }: ClothingComposerProps): React.JSX.E
           onKeyDown={(event) => {
             if (event.key !== 'Enter' || event.shiftKey) return
             event.preventDefault()
-            if (canSend) void send(text)
+            if (canSend) void run(record ? revisionPrompt(record, text) : text)
           }}
-          placeholder={record ? 'Describe a change to this garment…' : 'Describe a garment…'}
+          placeholder={
+            record
+              ? `Change ${currentVersion(record).prompt?.trim() || record.slug} (e.g. "thinner stripes")…`
+              : 'Describe a shirt, pants or t-shirt…'
+          }
           aria-label="Describe a garment"
           className="h-8 min-w-0 flex-1 rounded-md border border-border/60 bg-card px-2 text-xs text-foreground transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-hidden"
         />
+        <fieldset className="flex shrink-0 items-center gap-0.5 border-0 p-0">
+          {TYPES.map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              aria-pressed={kind === option.id}
+              disabled={busy}
+              onClick={() => setKind(option.id)}
+              className={cn(
+                'h-8 rounded px-1.5 text-2xs transition-colors disabled:opacity-40',
+                kind === option.id
+                  ? 'bg-foreground/10 text-foreground'
+                  : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              {option.label}
+            </button>
+          ))}
+        </fieldset>
         <button
           type="button"
           disabled={!canSend || !record}
           onClick={() => {
-            if (record) void send(revisionPrompt(record, text))
+            if (record) void run(revisionPrompt(record, text))
           }}
           title={record ? 'Revise the garment on screen' : 'Pick a garment first'}
-          className="h-8 shrink-0 rounded-md border border-border px-2 text-xs text-secondary-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:opacity-40"
+          className="flex h-8 shrink-0 items-center gap-1 rounded-md border border-border px-2 text-xs text-secondary-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:opacity-40"
         >
+          <Sparkles size={12} aria-hidden="true" />
           Apply
         </button>
         <button
           type="button"
           disabled={!canSend}
-          onClick={() => void send(text)}
-          title="Start a new garment from this prompt"
+          onClick={() => void run(text)}
           className="flex h-8 shrink-0 items-center gap-1 rounded-md bg-primary px-2 text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-40"
         >
-          <Sparkles size={12} aria-hidden="true" />
-          New
+          <Zap size={12} aria-hidden="true" />
+          {busy ? 'Drawing…' : 'Make it'}
         </button>
       </div>
-      <p className="pt-1 text-3xs leading-relaxed text-muted-foreground">
-        The prompt opens in the agent launcher: a garment is written by the host when the agent
-        finishes, so nothing is generated until you send it there.
-      </p>
+      {error && <p className="pt-1 text-3xs leading-relaxed text-destructive">{error}</p>}
     </div>
   )
 }
