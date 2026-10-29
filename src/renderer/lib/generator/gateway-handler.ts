@@ -16,6 +16,7 @@ import {
   readClothingResult
 } from '@/lib/generator/tools/generate-clothing'
 import { useLiveArtifactStore } from '@/stores/live-artifact-store'
+import { refreshLoadedProjects } from '@/stores/roblox-records-store'
 
 /** Which engine each tool family needs, for the refusal message. */
 const UNAVAILABLE = new Set([
@@ -124,6 +125,7 @@ async function dispatch(deps: GeneratorHandlerDeps, call: GeneratorCall): Promis
     const result = readClothingResult(deps.queue, taskId)
     if (result.status === 'done' && result.image) {
       useLiveArtifactStore.getState().show(call.sessionId, taskId, result.image)
+      refreshLoadedProjects()
     }
     return {
       callId: call.callId,

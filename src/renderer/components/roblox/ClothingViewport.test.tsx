@@ -110,6 +110,8 @@ describe('ClothingViewport', () => {
     mocks.loadArtifactRecords.mockResolvedValue([])
     render(<ClothingViewport projectPath="/p" />)
 
-    expect(await screen.findByText(/Pick a garment/)).toBeInTheDocument()
+    // Both the viewport placeholder and the Inspector say it, so this asserts
+    // presence rather than uniqueness on purpose.
+    expect((await screen.findAllByText(/Pick a garment/)).length).toBeGreaterThan(0)
   })
 })

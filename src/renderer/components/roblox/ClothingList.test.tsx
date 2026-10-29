@@ -86,7 +86,7 @@ describe('ClothingList', () => {
     ])
     render(<ClothingList projectPath="/p" />)
 
-    expect(await screen.findByText('shirt · v1')).toBeInTheDocument()
+    expect(await screen.findByText('Shirt · v1')).toBeInTheDocument()
     expect(mocks.readStillDataUrl).toHaveBeenCalledWith(
       expect.objectContaining({ slug: 'royal-robe' }),
       expect.objectContaining({ n: 1 })

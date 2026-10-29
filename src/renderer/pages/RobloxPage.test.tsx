@@ -75,7 +75,7 @@ describe('RobloxPage', () => {
 
   it('shows the viewport instead of a column of its own', async () => {
     renderPage()
-    expect(await screen.findByText(/Pick a garment/)).toBeInTheDocument()
+    expect((await screen.findAllByText(/Pick a garment/)).length).toBeGreaterThan(0)
     expect(screen.queryByRole('list', { name: 'Collection' })).toBeNull()
   })
 
@@ -92,7 +92,7 @@ describe('RobloxPage', () => {
 
   it('falls back to clothing for an unknown segment', async () => {
     renderPage('/roblox/nonsense')
-    expect(await screen.findByText(/Pick a garment/)).toBeInTheDocument()
+    expect((await screen.findAllByText(/Pick a garment/)).length).toBeGreaterThan(0)
   })
 
   it('shows the garment the Side panel picked', async () => {

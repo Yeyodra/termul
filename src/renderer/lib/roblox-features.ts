@@ -46,3 +46,20 @@ export function featurePath(feature: RobloxFeature): string {
 export function featureLabel(feature: RobloxFeature): string {
   return ROBLOX_FEATURES.find((entry) => entry.id === feature)?.label ?? feature
 }
+
+/**
+ * How a garment kind is written in the UI.
+ *
+ * `record.kind` is the raw `item.json` value (`shirt`, `pants`, `tshirt`), so it
+ * would otherwise show lower case in a row subtitle. RobloxKit maps the same
+ * three kinds through a label table and shows `Shirt` / `Pants` / `T-Shirt`.
+ */
+const KIND_LABELS: Record<string, string> = {
+  shirt: 'Shirt',
+  pants: 'Pants',
+  tshirt: 'T-Shirt'
+}
+
+export function kindLabel(kind: string): string {
+  return KIND_LABELS[kind] ?? kind
+}

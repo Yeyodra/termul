@@ -130,3 +130,18 @@ export function useProjectRecords(projectPath: string | undefined): ArtifactReco
     projectPath ? state.recordsByProject[projectPath] : undefined
   )
 }
+
+/**
+ * Re-read every project this window already loaded.
+ *
+ * A generation finishes in this window but is written to disk by the host, so
+ * nothing here knows which project the new record landed in. The loaded set is
+ * the answer: a project is only in it because a Roblox surface already read it,
+ * so a refresh there is both bounded and useful.
+ */
+export function refreshLoadedProjects(): void {
+  const state = useRobloxRecordsStore.getState()
+  for (const projectPath of Object.keys(state.loaded)) {
+    state.refresh(projectPath)
+  }
+}

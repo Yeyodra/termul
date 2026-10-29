@@ -5,19 +5,26 @@
  * selection store rather than from a parent's props. One `ArtifactViewportPanel`
  * per page: `ArtifactViewport` is deliberately per-instance, because a shared
  * WebGL surface was the cause of three separate bugs (commit 640ed56e, D13).
+ *
+ * The atlas is decoded twice for two different reasons: the viewport wants it as
+ * a texture, and the Inspector wants its alpha channel to say which regions the
+ * design actually painted. Both come from the one data URL the records store
+ * already holds, so no extra file read is involved.
  */
 
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { type ArtifactRecord, currentVersion } from '@/lib/artifact-records'
 import type { DesignType } from '@/lib/generator/engines/clothing/schema'
 import { ArtifactViewportPanel } from '@/lib/generator/viewport/ArtifactViewportPanel'
 import type { ClothingArtifact } from '@/lib/generator/viewport/artifact'
+import { type PaintReport, paintedByRegion, paintReport } from '@/lib/roblox-inspector'
 import {
   useProjectRecords,
   useRecordAtlas,
   useRobloxRecordsStore
 } from '@/stores/roblox-records-store'
 import { usePickedSlug } from '@/stores/roblox-selection-store'
+import { RobloxInspector } from './RobloxInspector'
 
 const TYPES = ['shirt', 'pants', 'tshirt'] as const
 
@@ -30,6 +37,25 @@ function typeOf(record: ArtifactRecord): DesignType {
   return isDesignType(design?.type) ? design.type : 'shirt'
 }
 
+/** Decode an atlas and report what each region actually paints. */
+async function measurePaint(atlas: string, type: DesignType): Promise<PaintReport | null> {
+  const image = new Image()
+  image.src = atlas
+  try {
+    await image.decode()
+  } catch {
+    return null
+  }
+  const canvas = document.createElement('canvas')
+  canvas.width = image.naturalWidth
+  canvas.height = image.naturalHeight
+  const context = canvas.getContext('2d', { willReadFrequently: true })
+  if (!context) return null
+  context.drawImage(image, 0, 0)
+  const { data } = context.getImageData(0, 0, canvas.width, canvas.height)
+  return paintReport(type, paintedByRegion(type, data, canvas.width, canvas.height))
+}
+
 interface ClothingViewportProps {
   projectPath: string
 }
@@ -38,6 +64,7 @@ export function ClothingViewport({ projectPath }: ClothingViewportProps): React.
   const records = useProjectRecords(projectPath)
   const picked = usePickedSlug(projectPath)
   const load = useRobloxRecordsStore((state) => state.load)
+  const [paint, setPaint] = useState<PaintReport | null>(null)
 
   useEffect(() => {
     load(projectPath)
@@ -50,50 +77,69 @@ export function ClothingViewport({ projectPath }: ClothingViewportProps): React.
 
   const atlas = useRecordAtlas(projectPath, active)
   const version = active ? currentVersion(active) : null
+  const type = active ? typeOf(active) : 'shirt'
 
   const artifact = useMemo<ClothingArtifact | null>(() => {
     if (!active || !atlas) return null
     return {
       kind: 'clothing',
-      type: typeOf(active),
+      type,
       atlas,
       name: version?.prompt?.trim() || active.slug
     }
-  }, [active, atlas, version])
+  }, [active, atlas, type, version])
+
+  useEffect(() => {
+    if (!atlas || !active) {
+      setPaint(null)
+      return
+    }
+    let cancelled = false
+    void measurePaint(atlas, type).then((result) => {
+      if (!cancelled) setPaint(result)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [atlas, active, type])
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <ArtifactViewportPanel
-        artifact={artifact}
-        placeholder={
-          active
-            ? `Reading v${version?.n ?? 1}…`
-            : 'Pick a garment in the Roblox panel to see it in 3D.'
-        }
-        className="min-h-0 flex-1"
-      />
-      {active && version ? (
-        <dl className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-t border-border/60 px-3 py-2 text-2xs text-muted-foreground">
-          <div className="flex gap-1">
-            <dt>Checks</dt>
-            <dd className={version.ok === false ? 'text-destructive' : 'text-success'}>
-              {version.ok === false ? 'failed' : 'ready'}
-            </dd>
-          </div>
-          <div className="flex gap-1">
-            <dt>Versions</dt>
-            <dd className="tabular-nums">{active.versions.length}</dd>
-          </div>
-          <div className="flex gap-1">
-            <dt>Current</dt>
-            <dd className="tabular-nums">v{version.n}</dd>
-          </div>
-          <div className="flex min-w-0 gap-1">
-            <dt>At</dt>
-            <dd className="truncate font-mono">{active.dir}</dd>
-          </div>
-        </dl>
-      ) : null}
+    <div className="flex min-h-0 flex-1">
+      <div className="flex min-w-0 flex-1 flex-col">
+        <ArtifactViewportPanel
+          artifact={artifact}
+          placeholder={
+            active
+              ? `Reading v${version?.n ?? 1}…`
+              : 'Pick a garment in the Roblox panel to see it in 3D.'
+          }
+          className="min-h-0 flex-1"
+        />
+        {active && version ? (
+          <dl className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-t border-border/60 px-3 py-2 text-2xs text-muted-foreground">
+            <div className="flex gap-1">
+              <dt>Checks</dt>
+              <dd className={version.ok === false ? 'text-destructive' : 'text-success'}>
+                {version.ok === false ? 'failed' : 'ready'}
+              </dd>
+            </div>
+            <div className="flex gap-1">
+              <dt>Versions</dt>
+              <dd className="tabular-nums">{active.versions.length}</dd>
+            </div>
+            <div className="flex gap-1">
+              <dt>Current</dt>
+              <dd className="tabular-nums">v{version.n}</dd>
+            </div>
+            <div className="flex min-w-0 gap-1">
+              <dt>At</dt>
+              <dd className="truncate font-mono">{active.dir}</dd>
+            </div>
+          </dl>
+        ) : null}
+      </div>
+
+      <RobloxInspector record={active} version={version} paint={paint} />
     </div>
   )
 }
