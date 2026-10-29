@@ -253,6 +253,18 @@ export class ArtifactViewport {
     this.frame(objects, direction)
   }
 
+  /**
+   * Show nothing, leaving the empty grid.
+   *
+   * Distinct from `dispose()`: the viewport stays usable, which is what a page
+   * needs when it goes back to a blank garment. Detaching the content is not
+   * enough on its own - the caller disposes the scene it owns, because the
+   * geometries and textures belong to that scene, not to this class.
+   */
+  clear(): void {
+    this.content.clear()
+  }
+
   /** Point the camera at `objects` from `direction`, at a fitting distance. */
   frame(objects: readonly Group[], direction: ViewDirection = '3/4'): void {
     const sphere = boundsOf(objects)

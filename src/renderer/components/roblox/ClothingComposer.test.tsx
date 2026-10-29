@@ -105,8 +105,8 @@ describe('ClothingComposer', () => {
     expect(screen.getByRole('button', { name: /Make it/ })).toBeEnabled()
   })
 
-  it('lets the kind be picked before generating', async () => {
-    renderComposer()
+  it('lets the kind be picked while nothing is open', async () => {
+    renderComposer(null)
     fireEvent.click(screen.getByRole('button', { name: 'Pants' }))
     fireEvent.change(screen.getByLabelText('Describe a garment'), {
       target: { value: 'blue jeans' }
@@ -116,6 +116,42 @@ describe('ClothingComposer', () => {
     await waitFor(() =>
       expect(mocks.runPageGeneration).toHaveBeenCalledWith(
         expect.objectContaining({ type: 'pants' })
+      )
+    )
+  })
+
+  it('locks the kind to the open record, so a revision cannot change template', () => {
+    renderComposer(record({ kind: 'shirt' }))
+    expect(screen.getByRole('button', { name: 'Shirt' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Pants' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'T-shirt' })).toBeDisabled()
+  })
+
+  it('revises on the record kind even when the picker was moved first', async () => {
+    renderComposer(record({ kind: 'shirt' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Pants' }))
+    fireEvent.change(screen.getByLabelText('Describe a garment'), {
+      target: { value: 'tambah celana' }
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Apply/ }))
+
+    await waitFor(() =>
+      expect(mocks.runPageGeneration).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'shirt', recordSlug: 'royal-robe' })
+      )
+    )
+  })
+
+  it('makes a new garment on Make it, even with one open', async () => {
+    renderComposer(record({ kind: 'shirt' }))
+    fireEvent.change(screen.getByLabelText('Describe a garment'), {
+      target: { value: 'celana biru' }
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Make it/ }))
+
+    await waitFor(() =>
+      expect(mocks.runPageGeneration).toHaveBeenCalledWith(
+        expect.objectContaining({ recordSlug: undefined })
       )
     )
   })

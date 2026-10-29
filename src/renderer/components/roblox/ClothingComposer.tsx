@@ -62,6 +62,14 @@ export function ClothingComposer({
   const [error, setError] = useState<string | null>(null)
   const mounted = useRef(true)
 
+  /**
+   * What the picker shows. A record's kind is fixed: it is the template its
+   * layers were drawn on, so offering a different kind while it is open only
+   * invites a save that lands somewhere else. The picker is therefore disabled
+   * while a record is open, and shows that record's kind.
+   */
+  const shownKind: DesignType = record ? (record.kind as DesignType) : kind
+
   useEffect(() => {
     mounted.current = true
     return () => {
@@ -76,9 +84,17 @@ export function ClothingComposer({
    * or as a new record. It is a fact passed to the host, not a sentence in the
    * prompt: asking the model to keep the name let it rename the garment, and a
    * renamed garment is a different record with its own empty history.
+   *
+   * The KIND is the record's, not the picker's, whenever this revises. A record's
+   * kind is its template: a shirt is drawn on the 585x559 shirt sheet, pants on
+   * the pants sheet. Taking the kind from the picker meant that selecting Pants
+   * while a shirt was open sent `kind: pants` with the shirt's slug, so the host
+   * wrote `pants/<shirt-slug>` - a different folder - and the shirt looked gone.
+   * The picker therefore only ever decides what NEW creates.
    */
   const run = async (prompt: string, revise: boolean): Promise<void> => {
     if (!prompt.trim() || busy) return
+    const kindForRun: DesignType = revise && record ? (record.kind as DesignType) : kind
     setBusy(true)
     setError(null)
     useStageStore
@@ -89,7 +105,7 @@ export function ClothingComposer({
       const outcome = await runPageGeneration({
         projectPath,
         prompt: prompt.trim(),
-        type: kind,
+        type: kindForRun,
         recordSlug: revise ? record?.slug : undefined,
         onStage: (stage) => {
           if (mounted.current) {
@@ -153,12 +169,12 @@ export function ClothingComposer({
             <button
               key={option.id}
               type="button"
-              aria-pressed={kind === option.id}
-              disabled={busy}
+              aria-pressed={shownKind === option.id}
+              disabled={busy || record !== null}
               onClick={() => setKind(option.id)}
               className={cn(
                 'h-8 rounded px-1.5 text-2xs transition-colors disabled:opacity-40',
-                kind === option.id
+                shownKind === option.id
                   ? 'bg-foreground/10 text-foreground'
                   : 'text-muted-foreground hover:text-foreground'
               )}
@@ -186,8 +202,8 @@ export function ClothingComposer({
         <button
           type="button"
           disabled={!canSend || busy}
-          onClick={() => void run(text, record !== null)}
-          title="Draw with the kind picked above"
+          onClick={() => void run(text, false)}
+          title="Create a new garment of the kind picked above"
           className="flex h-8 shrink-0 items-center gap-1 rounded-md bg-primary px-2 text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-40"
         >
           <Zap size={12} aria-hidden="true" />
