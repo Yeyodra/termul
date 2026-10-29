@@ -98,6 +98,12 @@ export interface ClothingToolDeps {
    */
   agentFor?: (task: { agentId?: string | null; sessionId?: string | null }) => string | null
   images?: string[]
+  /**
+   * Called as each visible layer reaches the sheet, so a page can show
+   * "Drawing layer 5 of 7". The agent path leaves it unset: it only needs the
+   * finished result.
+   */
+  onLayer?: (drawn: number, total: number) => void
 }
 
 /**
@@ -211,7 +217,7 @@ export async function runClothingGeneration(
     brain,
     askBrain: deps.askBrain,
     brainTakesImages: deps.brainTakesImages,
-    build: async (spec) => buildClothing(spec, { type: args.type, images }),
+    build: async (spec) => buildClothing(spec, { type: args.type, images, onLayer: deps.onLayer }),
     normalize: (spec) => spec,
     review: (built) => clothingReview(built),
     onStage: ({ stage, detail }) => report(stage, detail ?? null)

@@ -18,7 +18,7 @@ import { type PaintReport, versionFacts } from '@/lib/roblox-inspector'
 import { cn } from '@/lib/utils'
 
 const TABS = ['Checks', 'Regions', 'Layers', 'Versions', 'Use it'] as const
-type TabId = (typeof TABS)[number]
+export type TabId = (typeof TABS)[number]
 
 const TAB_CLASS =
   'inline-flex h-[22px] items-center rounded px-1.5 text-[10px] text-muted-foreground transition-colors duration-150 ease-out hover:bg-muted hover:text-foreground'
@@ -254,16 +254,26 @@ interface RobloxInspectorProps {
   version: RecordVersion | null
   paint: PaintReport | null
   onRestore?: (n: number) => Promise<void>
+  /** Which tab is open, so a node in the pipeline can drive it. */
+  tab?: TabId
+  onTabChange?: (tab: TabId) => void
 }
 
 export function RobloxInspector({
   record,
   version,
   paint,
-  onRestore
+  onRestore,
+  tab: controlledTab,
+  onTabChange
 }: RobloxInspectorProps): React.JSX.Element {
   const [open, setOpen] = useState(true)
-  const [tab, setTab] = useState<TabId>('Checks')
+  const [ownTab, setOwnTab] = useState<TabId>('Checks')
+  const tab = controlledTab ?? ownTab
+  const selectTab = (next: TabId): void => {
+    setOwnTab(next)
+    onTabChange?.(next)
+  }
   // A t-shirt is one full-bleed graphic, so a per-region breakdown says nothing
   // the engine itself does not skip (`check.ts` skips it for the same reason).
   const regionsApply = !version || versionFacts(version).type !== 'tshirt'
@@ -313,7 +323,7 @@ export function RobloxInspector({
             type="button"
             role="tab"
             aria-selected={activeTab === id}
-            onClick={() => setTab(id)}
+            onClick={() => selectTab(id)}
             className={cn(TAB_CLASS, activeTab === id && TAB_ON)}
           >
             {id}

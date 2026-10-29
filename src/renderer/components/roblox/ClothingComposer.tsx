@@ -17,6 +17,7 @@ import { type ArtifactRecord, currentVersion } from '@/lib/artifact-records'
 import type { DesignType } from '@/lib/generator/engines/clothing/schema'
 import { runPageGeneration } from '@/lib/roblox-generate'
 import { cn } from '@/lib/utils'
+import { useStageStore } from '@/stores/roblox-stage-store'
 
 const TYPES: Array<{ id: DesignType; label: string }> = [
   { id: 'shirt', label: 'Shirt' },
@@ -72,22 +73,37 @@ export function ClothingComposer({
     if (!prompt.trim() || busy) return
     setBusy(true)
     setError(null)
-    onStage?.('starting')
+    useStageStore
+      .getState()
+      .set(projectPath, { state: 'running', stage: 'Design', layer: 0, total: 0, error: null })
+    onStage?.('running')
     try {
       const outcome = await runPageGeneration({
         projectPath,
         prompt: prompt.trim(),
         type: kind,
         onStage: (stage) => {
-          if (mounted.current) onStage?.(stage)
+          if (mounted.current) {
+            useStageStore.getState().set(projectPath, { stage })
+            onStage?.(stage)
+          }
+        },
+        onLayer: (drawn, total) => {
+          if (mounted.current) {
+            useStageStore.getState().set(projectPath, { layer: drawn, total })
+          }
         }
       })
       if (!mounted.current) return
       if (outcome.status === 'done') {
         setText('')
+        useStageStore.getState().set(projectPath, { state: 'done', stage: 'Ready' })
         onSettled?.()
       } else if (outcome.status === 'failed') {
         setError(outcome.error)
+        useStageStore.getState().set(projectPath, { state: 'error', error: outcome.error })
+      } else {
+        useStageStore.getState().set(projectPath, { state: 'idle', layer: 0, total: 0 })
       }
     } finally {
       if (mounted.current) {

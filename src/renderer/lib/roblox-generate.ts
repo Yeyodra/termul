@@ -50,12 +50,21 @@ export type PageGeneration =
  *
  * `unavailable` is a real answer, not an error: no project open, or the gateway
  * has not started yet. The composer shows the reason instead of pretending.
+ *
+ * `onLayer` is installed on the deps for the duration of this task, so the page
+ * can show the sheet filling in. It is cleared when the task settles, which
+ * matters because the deps object is shared with the agent path.
  */
-export function startPageGeneration({ prompt, type }: StartOptions): PageGeneration {
+export function startPageGeneration({
+  prompt,
+  type,
+  onLayer
+}: StartOptions & { onLayer?: (drawn: number, total: number) => void }): PageGeneration {
   const deps = pageGenerator()
   if (!deps) {
     return { status: 'unavailable', reason: 'the generator engine is not ready yet' }
   }
+  deps.clothing.onLayer = onLayer
   const accepted = queueGenerateClothing(deps.clothing, { type, prompt })
   return { status: 'queued', taskId: accepted.taskId }
 }
@@ -94,6 +103,8 @@ export async function saveArtifact(
 export interface RunOptions extends StartOptions {
   /** Called with every stage the engine reports, for the node pipeline. */
   onStage?: (stage: string, detail: string | null) => void
+  /** Called as each layer reaches the sheet, for "Drawing layer 5 of 7". */
+  onLayer?: (drawn: number, total: number) => void
 }
 
 export type RunOutcome =
@@ -109,31 +120,41 @@ export type RunOutcome =
  * record still lands on disk and the collection still refreshes.
  */
 export async function runPageGeneration(options: RunOptions): Promise<RunOutcome> {
-  const started = startPageGeneration(options)
+  const started = startPageGeneration({
+    projectPath: options.projectPath,
+    prompt: options.prompt,
+    type: options.type,
+    onLayer: options.onLayer
+  })
   if (started.status === 'unavailable') {
     return { status: 'failed', error: started.reason }
   }
 
   let lastStage = ''
-  for (;;) {
-    const poll = pollPageGeneration(started.taskId)
-    if (poll.stage && poll.stage !== lastStage) {
-      lastStage = poll.stage
-      options.onStage?.(poll.stage, null)
-    }
-    if (poll.status === 'done') {
-      try {
-        return { status: 'done', saved: await saveArtifact(options.projectPath, poll) }
-      } catch (cause) {
-        return { status: 'failed', error: cause instanceof Error ? cause.message : String(cause) }
+  try {
+    for (;;) {
+      const poll = pollPageGeneration(started.taskId)
+      if (poll.stage && poll.stage !== lastStage) {
+        lastStage = poll.stage
+        options.onStage?.(poll.stage, null)
       }
+      if (poll.status === 'done') {
+        try {
+          return { status: 'done', saved: await saveArtifact(options.projectPath, poll) }
+        } catch (cause) {
+          return { status: 'failed', error: cause instanceof Error ? cause.message : String(cause) }
+        }
+      }
+      if (poll.status === 'failed') {
+        return { status: 'failed', error: poll.error ?? 'the generation failed' }
+      }
+      if (poll.status === 'cancelled' || poll.status === 'interrupted') {
+        return { status: 'cancelled' }
+      }
+      await new Promise<void>((resolve) => setTimeout(resolve, POLL_MS))
     }
-    if (poll.status === 'failed') {
-      return { status: 'failed', error: poll.error ?? 'the generation failed' }
-    }
-    if (poll.status === 'cancelled' || poll.status === 'interrupted') {
-      return { status: 'cancelled' }
-    }
-    await new Promise<void>((resolve) => setTimeout(resolve, POLL_MS))
+  } finally {
+    const deps = pageGenerator()
+    if (deps) deps.clothing.onLayer = undefined
   }
 }

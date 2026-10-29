@@ -24,8 +24,10 @@ import {
   useRobloxRecordsStore
 } from '@/stores/roblox-records-store'
 import { usePickedSlug } from '@/stores/roblox-selection-store'
+import { progressLine, useStage } from '@/stores/roblox-stage-store'
 import { ClothingComposer } from './ClothingComposer'
-import { RobloxInspector } from './RobloxInspector'
+import { NodePipeline } from './NodePipeline'
+import { RobloxInspector, type TabId } from './RobloxInspector'
 
 const TYPES = ['shirt', 'pants', 'tshirt'] as const
 
@@ -66,7 +68,9 @@ export function ClothingViewport({ projectPath }: ClothingViewportProps): React.
   const picked = usePickedSlug(projectPath)
   const load = useRobloxRecordsStore((state) => state.load)
   const refresh = useRobloxRecordsStore((state) => state.refresh)
+  const stage = useStage(projectPath)
   const [paint, setPaint] = useState<PaintReport | null>(null)
+  const [tab, setTab] = useState<TabId>('Checks')
 
   useEffect(() => {
     load(projectPath)
@@ -118,18 +122,37 @@ export function ClothingViewport({ projectPath }: ClothingViewportProps): React.
     refresh(projectPath)
   }
 
+  const progress = progressLine(stage)
+
   return (
     <div className="flex min-h-0 flex-1">
       <div className="flex min-w-0 flex-1 flex-col">
-        <ArtifactViewportPanel
-          artifact={artifact}
-          placeholder={
-            active
-              ? `Reading v${version?.n ?? 1}…`
-              : 'Pick a garment in the Roblox panel to see it in 3D.'
-          }
-          className="min-h-0 flex-1"
+        <NodePipeline
+          record={active}
+          version={version}
+          paint={paint}
+          stage={stage}
+          onOpenTab={setTab}
         />
+        <div className="relative flex min-h-0 flex-1 flex-col">
+          <ArtifactViewportPanel
+            artifact={artifact}
+            placeholder={
+              active
+                ? `Reading v${version?.n ?? 1}…`
+                : 'Pick a garment in the Roblox panel to see it in 3D.'
+            }
+            className="min-h-0 flex-1"
+          />
+          {progress && (
+            <p
+              aria-live="polite"
+              className="pointer-events-none absolute inset-x-0 bottom-2 text-center text-2xs text-warning"
+            >
+              {progress}
+            </p>
+          )}
+        </div>
         {active && version ? (
           <dl className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-t border-border/60 px-3 py-2 text-2xs text-muted-foreground">
             <div className="flex gap-1">
@@ -160,7 +183,14 @@ export function ClothingViewport({ projectPath }: ClothingViewportProps): React.
         />
       </div>
 
-      <RobloxInspector record={active} version={version} paint={paint} onRestore={handleRestore} />
+      <RobloxInspector
+        record={active}
+        version={version}
+        paint={paint}
+        onRestore={handleRestore}
+        tab={tab}
+        onTabChange={setTab}
+      />
     </div>
   )
 }

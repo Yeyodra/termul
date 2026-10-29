@@ -155,11 +155,22 @@ function blit(ctx: CompositorTarget, sheet: RenderedSheet): void {
  * `loadImage` is only consulted for `image` layers. Pass a loader that throws
  * when pictures are unavailable so the failure surfaces instead of the layer
  * vanishing.
+ *
+ * `onLayer` fires after each visible layer reaches the canvas, with the 1-based
+ * count and the total. RobloxKit shows "Drawing layer 5 of 7" and the sheet
+ * growing behind it; without this hook the render is one opaque pass and the
+ * page has nothing to show until it is already finished.
+ *
+ * The flush stays batched. A run of pattern layers is drawn in one pass, so the
+ * hook reports the last layer of that run rather than every layer in it - which
+ * is exactly the progress a user sees, and it keeps the output identical to the
+ * un-instrumented render (D14: flush per layer, not per pattern).
  */
 export async function renderToCanvas(
   design: ClothingDesign,
   canvas: SheetCanvas,
-  loadImage: ImageLoader
+  loadImage: ImageLoader,
+  onLayer?: (drawn: number, total: number) => void
 ): Promise<SheetCanvas> {
   const { width, height } = SHEET_DIMENSIONS[design.type]
   canvas.width = width
@@ -169,6 +180,10 @@ export async function renderToCanvas(
   if (!ctx) throw new Error('a 2D canvas is unavailable, so the sheet cannot be drawn')
 
   ctx.clearRect(0, 0, width, height)
+
+  const visible = (design.layers ?? []).filter((layer) => !layer.hidden)
+  const total = visible.length
+  let drawn = 0
 
   let batch: ClothingLayer[] = []
   const flush = (): void => {
@@ -182,11 +197,15 @@ export async function renderToCanvas(
     ctx.fillRect(0, 0, width, height)
   }
 
-  for (const layer of design.layers ?? []) {
-    if (layer.hidden) continue
+  for (const layer of visible) {
+    drawn += 1
 
     if (isPattern(layer.kind)) {
       batch.push(layer)
+      // A pattern only becomes visible once its batch is blitted, so report it
+      // when the batch ends rather than here; the count still advances so the
+      // node can show "layer 3 of 7" while the batch is open.
+      onLayer?.(drawn, total)
       continue
     }
 
@@ -194,6 +213,7 @@ export async function renderToCanvas(
     // batch has to reach the canvas first.
     flush()
     await drawVectorLayer(ctx, resolveTarget(design.type, layer.target ?? 'all'), layer, loadImage)
+    onLayer?.(drawn, total)
   }
 
   flush()

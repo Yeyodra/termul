@@ -113,7 +113,9 @@ describe('ClothingViewport', () => {
     ])
     renderViewport()
 
-    expect(await screen.findByText('failed')).toBeInTheDocument()
+    // The fact row and the publish node both report it, so presence is what
+    // this asserts, not uniqueness.
+    expect((await screen.findAllByText('failed')).length).toBeGreaterThan(0)
   })
 
   it('invites a pick when the project holds nothing', async () => {
