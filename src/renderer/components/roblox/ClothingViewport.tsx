@@ -125,8 +125,8 @@ export function ClothingViewport({ projectPath }: ClothingViewportProps): React.
   const progress = progressLine(stage)
 
   return (
-    <div className="flex min-h-0 flex-1">
-      <div className="flex min-w-0 flex-1 flex-col">
+    <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <NodePipeline
           record={active}
           version={version}
