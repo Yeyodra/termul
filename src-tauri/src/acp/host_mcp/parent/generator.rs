@@ -16,6 +16,7 @@ use tokio::sync::oneshot;
 use super::HostPlanServer;
 use crate::acp::events;
 use crate::acp::host_mcp::FrameReply;
+use crate::web::sink::{record_host_event, HostRecordFanout};
 /// How long the host waits for the renderer to answer one generator call.
 ///
 /// A `generate_*` call only queues work and a `get_*_task` call only reads a
@@ -25,26 +26,6 @@ pub const GENERATOR_CALL_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Event carrying one generator call to the renderer.
 pub const EVENT_GENERATOR_CALL: &str = "acp:generator_call";
-
-/// Event telling the renderer where a finished garment landed.
-///
-/// The renderer answers the call before this write happens, so it cannot learn
-/// the record path from its own reply: the save note is attached afterwards and
-/// goes to the agent. This event is how a page already open on the project
-/// refreshes without polling the disk.
-pub const EVENT_ARTIFACT_SAVED: &str = "acp:artifact_saved";
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ArtifactSavedEvent {
-    pub session_id: String,
-    pub slug: String,
-    pub kind: String,
-    pub version: u64,
-    pub item_path: String,
-    pub relative: String,
-    pub task_id: Option<String>,
-}
 
 /// Parent → renderer: one generator call to run.
 #[derive(Debug, Clone, Serialize)]
@@ -193,28 +174,11 @@ impl HostPlanServer {
         let kind = fields
             .get("kind")
             .and_then(Value::as_str)
-            .unwrap_or("clothing")
+            .unwrap_or("artifact")
             .to_string();
-        let task_id = fields
-            .get("taskId")
-            .and_then(Value::as_str)
-            .map(str::to_string);
         let note = match written {
             Ok(Ok(saved)) => {
-                events::fan_out(
-                    &self.sinks,
-                    Some(session_id),
-                    EVENT_ARTIFACT_SAVED,
-                    &ArtifactSavedEvent {
-                        session_id: session_id.to_string(),
-                        slug: saved.slug.clone(),
-                        kind,
-                        version: saved.version,
-                        item_path: saved.item_absolute.clone(),
-                        relative: saved.atlas_relative.clone(),
-                        task_id,
-                    },
-                );
+                self.announce_artifact(session_id, &saved, &kind);
                 serde_json::json!({
                     "saved": true,
                     "path": saved.atlas_absolute,
@@ -274,6 +238,42 @@ impl HostPlanServer {
             + 1
     }
 
+    /// Show the finished garment in the agent's own reply.
+    ///
+    /// A `message_chunk` is the only durable record that survives a relaunch and
+    /// renders as a bubble: `tool_call` payloads are reduced to id/kind/status, so
+    /// a picture written there is dropped. The chunk carries the file's URI, never
+    /// the bytes - the atlas already lives in the record directory, and a base64
+    /// copy would ride in every transcript write.
+    fn announce_artifact(&self, session_id: &str, saved: &SavedRecord, kind: &str) {
+        if saved.still_absolute.is_none() {
+            return;
+        }
+        let chunk = serde_json::json!({
+            "role": "agent",
+            "content": {
+                "type": "image",
+                "uri": format!("file://{}", saved.still_absolute.as_deref().unwrap_or_default()),
+                "mimeType": "image/png",
+                "slug": saved.slug,
+                "kind": kind,
+                "version": saved.version,
+            },
+        });
+        if let Err(error) = record_host_event(
+            &self.sinks,
+            session_id,
+            "message_chunk",
+            &chunk,
+            HostRecordFanout::AllSinks,
+        ) {
+            log::warn!(
+                "[generator] could not announce the saved garment for session {}: {error}",
+                crate::logging::redact_session_id(session_id)
+            );
+        }
+    }
+
     /// Park a call without a frame, so tests can exercise the reply and
     /// cancellation bookkeeping directly (tests only).
     #[cfg(test)]
@@ -293,7 +293,7 @@ fn garment_dir(fields: &serde_json::Map<String, Value>) -> String {
     let kind = fields
         .get("kind")
         .and_then(Value::as_str)
-        .unwrap_or("clothing");
+        .unwrap_or("artifact");
     let name = fields
         .get("name")
         .and_then(Value::as_str)
@@ -323,6 +323,7 @@ struct SavedRecord {
     atlas_absolute: String,
     atlas_relative: String,
     item_absolute: String,
+    still_absolute: Option<String>,
 }
 
 /// Append one version to `<root>/<record_dir>/item.json`, writing its atlas and
@@ -357,14 +358,17 @@ fn write_record(
     let atlas_relative = format!("{record_dir}/{atlas_name}");
     let atlas_file = write_project_file(root, &atlas_relative, atlas).map_err(|error| error.message)?;
 
-    let still_name = match still {
+    let (still_name, still_absolute) = match still {
         Some(bytes) => {
             let name = format!("v{n}.still.png");
-            write_project_file(root, &format!("{record_dir}/{name}"), bytes)
+            let file = write_project_file(root, &format!("{record_dir}/{name}"), bytes)
                 .map_err(|error| error.message)?;
-            Value::String(name)
+            (
+                Value::String(name),
+                Some(file.absolute.to_string_lossy().to_string()),
+            )
         }
-        None => Value::Null,
+        None => (Value::Null, None),
     };
 
     let now = now_millis();
@@ -409,6 +413,7 @@ fn write_record(
         atlas_absolute: atlas_file.absolute.to_string_lossy().to_string(),
         atlas_relative: atlas_file.relative,
         item_absolute: item_file.absolute.to_string_lossy().to_string(),
+        still_absolute,
     })
 }
 

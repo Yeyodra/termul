@@ -281,6 +281,7 @@ fn garment(server: &HostPlanServer, name: &str, atlas: &[u8]) -> serde_json::Val
                 "design": {"type": "shirt", "layers": []},
                 "report": {"ok": true},
                 "atlas": format!("data:image/png;base64,{encoded}"),
+                "image": format!("data:image/png;base64,{encoded}"),
             })),
         ))
         .expect("a result")
@@ -392,7 +393,7 @@ fn two_garments_with_different_names_get_their_own_records() {
     assert_eq!(record(&cwd, "desert-camo")["current"], 1);
 }
 
-// --- the saved event the page listens for --------------------------------
+// --- the chunk that puts the picture in the agent reply ------------------
 
 #[derive(Default)]
 struct SavedSink {
@@ -401,7 +402,7 @@ struct SavedSink {
 
 impl crate::web::EventSink for SavedSink {
     fn emit(&self, event: &crate::web::sink::AcpEvent) {
-        if event.type_ == EVENT_ARTIFACT_SAVED {
+        if event.type_ == "message_chunk" {
             self.events.lock().unwrap().push(event.payload.clone());
         }
     }
@@ -427,21 +428,28 @@ fn a_saved_garment_announces_its_slug_and_version_to_the_renderer() {
             ..Default::default()
         }))
         .unwrap();
+    let relay = std::sync::Arc::new(crate::web::WsRelaySink::with_persistence(
+        8,
+        persistence.clone(),
+    ));
     let sink = std::sync::Arc::new(SavedSink::default());
-    let server = HostPlanServer::start(vec![sink.clone()], Some(persistence));
+    let server = HostPlanServer::start(
+        vec![relay as std::sync::Arc<dyn crate::web::EventSink>, sink.clone()],
+        Some(persistence),
+    );
 
     let saved = garment(&server, "Royal Robe", b"png");
     assert_eq!(saved["save"]["saved"], true, "{saved}");
 
     let events = sink.events.lock().unwrap();
     assert_eq!(events.len(), 1, "one save, one announcement");
-    let event = &events[0];
-    assert_eq!(event["slug"], "royal-robe");
-    assert_eq!(event["version"], 1);
-    assert_eq!(event["kind"], "shirt");
-    assert_eq!(event["sessionId"], "sess-real");
-    assert!(
-        event["itemPath"].as_str().unwrap().ends_with("item.json"),
-        "{event}"
-    );
+    let content = &events[0]["content"];
+    assert_eq!(events[0]["role"], "agent", "the picture joins the reply");
+    assert_eq!(content["type"], "image");
+    assert_eq!(content["slug"], "royal-robe");
+    assert_eq!(content["version"], 1);
+    assert_eq!(content["kind"], "shirt");
+    let uri = content["uri"].as_str().unwrap();
+    assert!(uri.starts_with("file://"), "{uri}");
+    assert!(uri.ends_with("v1.still.png"), "{uri}");
 }
