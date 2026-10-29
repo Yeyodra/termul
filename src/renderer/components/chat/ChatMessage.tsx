@@ -19,6 +19,7 @@ import {
 import { normalizePlanFenceBoundary, stripEmptyFences } from '@/lib/strip-empty-fences'
 import { cn } from '@/lib/utils'
 import type { ChatMessage as ChatMessageType } from '@/stores/acp-store'
+import { useLatestLivePicture } from '@/stores/live-artifact-store'
 import { AgentProse } from './chat-agent-prose'
 import {
   blockData,
@@ -372,6 +373,8 @@ interface ChatMessageProps {
   onRetry?: () => void
   /** Filesystem roots used for safe file-path links in agent prose. */
   filePathContext?: FilePathResolutionContext
+  /** Session the message belongs to, for the live artifact picture. */
+  sessionId?: string
 }
 
 /** The same inset focus ring as `ToolCallCard`, for a focusable message. */
@@ -419,10 +422,12 @@ function ChatMessageComponent({
   animateEnter = true,
   onEdit,
   onRetry,
-  filePathContext
+  filePathContext,
+  sessionId
 }: ChatMessageProps): React.JSX.Element {
   const reduced = useReducedMotion() ?? false
   const isMobileShell = useMobileWebShell()
+  const livePicture = useLatestLivePicture(sessionId)
 
   const isUser = message.role === 'user'
   const text = blocksToText(message.blocks)
@@ -584,6 +589,24 @@ function ChatMessageComponent({
             animateEnter={animateEnter}
           >
             <MediaBlocks blocks={message.blocks} large />
+          </StaggerSection>
+        )}
+        {!hasMedia && livePicture && mediaDelay != null && (
+          <StaggerSection
+            delay={mediaDelay}
+            align="start"
+            reduced={reduced}
+            animateEnter={animateEnter}
+          >
+            <ImageLightbox src={livePicture} alt="Generated artifact">
+              <button type="button" className="block cursor-zoom-in bg-transparent p-0">
+                <img
+                  src={livePicture}
+                  alt="Generated artifact"
+                  className="max-h-[420px] max-w-full rounded-lg border border-border/60 object-contain"
+                />
+              </button>
+            </ImageLightbox>
           </StaggerSection>
         )}
         {hasActions && (
