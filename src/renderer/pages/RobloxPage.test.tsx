@@ -1,36 +1,54 @@
 import { render, screen } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { useRobloxRecordsStore } from '@/stores/roblox-records-store'
+import { useRobloxSelectionStore } from '@/stores/roblox-selection-store'
 import RobloxPage from './RobloxPage'
 
-const { mocks } = vi.hoisted(() => ({
+const { mocks, viewports } = vi.hoisted(() => ({
   mocks: {
     project: undefined as unknown,
-    loadArtifactRecords: vi.fn()
-  }
+    loadArtifactRecords: vi.fn(),
+    readAtlasDataUrl: vi.fn(),
+    readStillDataUrl: vi.fn()
+  },
+  viewports: [] as Array<{ atlas?: string; name?: string }>
 }))
 
 vi.mock('@/stores/project-store', () => ({
   useActiveProject: () => mocks.project
 }))
 
-vi.mock('@/lib/artifact-records', () => ({
-  loadArtifactRecords: mocks.loadArtifactRecords,
-  currentVersion: (record: { versions: unknown[]; current: number }) =>
-    record.versions.find((v) => (v as { n: number }).n === record.current) ??
-    record.versions[record.versions.length - 1],
-  readAtlasDataUrl: vi.fn(async () => null),
-  readStillDataUrl: vi.fn(async () => null)
-}))
+vi.mock('@/lib/artifact-records', async () => {
+  const actual =
+    await vi.importActual<typeof import('@/lib/artifact-records')>('@/lib/artifact-records')
+  return {
+    ...actual,
+    loadArtifactRecords: mocks.loadArtifactRecords,
+    readAtlasDataUrl: mocks.readAtlasDataUrl,
+    readStillDataUrl: mocks.readStillDataUrl
+  }
+})
 
 vi.mock('@/lib/generator/viewport/ArtifactViewportPanel', () => ({
-  ArtifactViewportPanel: ({ placeholder }: { placeholder?: string }) => <div>{placeholder}</div>
+  ArtifactViewportPanel: ({
+    artifact,
+    placeholder
+  }: {
+    artifact: unknown
+    placeholder?: string
+  }) => {
+    viewports.push((artifact ?? {}) as { atlas?: string; name?: string })
+    return <div data-testid="viewport">{artifact ? 'scene' : placeholder}</div>
+  }
 }))
 
-function renderPage(): void {
+function renderPage(initialPath = '/roblox/clothing'): void {
   render(
-    <MemoryRouter>
-      <RobloxPage />
+    <MemoryRouter initialEntries={[initialPath]}>
+      <Routes>
+        <Route path="/roblox/*" element={<RobloxPage />} />
+      </Routes>
     </MemoryRouter>
   )
 }
@@ -40,14 +58,25 @@ describe('RobloxPage', () => {
     mocks.project = { id: 'p1', name: 'termul', path: 'C:/repo' }
     mocks.loadArtifactRecords.mockReset()
     mocks.loadArtifactRecords.mockResolvedValue([])
+    mocks.readAtlasDataUrl.mockReset()
+    mocks.readAtlasDataUrl.mockResolvedValue(null)
+    mocks.readStillDataUrl.mockReset()
+    mocks.readStillDataUrl.mockResolvedValue(null)
+    viewports.length = 0
+    useRobloxRecordsStore.setState({
+      recordsByProject: {},
+      loaded: {},
+      atlases: {},
+      stills: {},
+      reading: {}
+    })
+    useRobloxSelectionStore.setState({ pickedByProject: {} })
   })
 
-  it('lists every generator and marks the unimplemented ones as soon', () => {
+  it('shows the viewport instead of a column of its own', async () => {
     renderPage()
-    expect(screen.getByRole('button', { name: /Clothing/ })).toBeEnabled()
-    expect(screen.getByRole('button', { name: /3D Generator/ })).toBeDisabled()
-    expect(screen.getByRole('button', { name: /Animation/ })).toBeDisabled()
-    expect(screen.getAllByText('soon')).toHaveLength(6)
+    expect(await screen.findByText(/Pick a garment/)).toBeInTheDocument()
+    expect(screen.queryByRole('list', { name: 'Collection' })).toBeNull()
   })
 
   it('says a project is needed before a garment can be written', () => {
@@ -56,13 +85,17 @@ describe('RobloxPage', () => {
     expect(screen.getByText(/Open a project first/)).toBeInTheDocument()
   })
 
-  it('reads the collection from the project folder', async () => {
-    renderPage()
-    expect(await screen.findByText(/No garment yet/)).toBeInTheDocument()
-    expect(mocks.loadArtifactRecords).toHaveBeenCalledWith('C:/repo')
+  it('reads the feature from the URL', () => {
+    renderPage('/roblox/vfx')
+    expect(screen.getByText(/VFX has no engine/)).toBeInTheDocument()
   })
 
-  it('lists a record the project already holds', async () => {
+  it('falls back to clothing for an unknown segment', async () => {
+    renderPage('/roblox/nonsense')
+    expect(await screen.findByText(/Pick a garment/)).toBeInTheDocument()
+  })
+
+  it('shows the garment the Side panel picked', async () => {
     mocks.loadArtifactRecords.mockResolvedValue([
       {
         slug: 'royal-robe',
@@ -78,8 +111,11 @@ describe('RobloxPage', () => {
         ]
       }
     ])
+    mocks.readAtlasDataUrl.mockResolvedValue('data:image/png;base64,AAAA')
+    useRobloxSelectionStore.setState({ pickedByProject: { 'C:/repo': 'royal-robe' } })
+
     renderPage()
-    expect(await screen.findByText('a red flannel')).toBeInTheDocument()
-    expect(screen.getByText('shirt · v2')).toBeInTheDocument()
+    expect(await screen.findByText('scene')).toBeInTheDocument()
+    expect(viewports.some((entry) => entry.name === 'a red flannel')).toBe(true)
   })
 })

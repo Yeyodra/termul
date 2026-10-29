@@ -1,6 +1,8 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { ClothingCollection } from './ClothingCollection'
+import { useRobloxRecordsStore } from '@/stores/roblox-records-store'
+import { useRobloxSelectionStore } from '@/stores/roblox-selection-store'
+import { ClothingList } from './ClothingList'
 
 const { mocks } = vi.hoisted(() => ({
   mocks: {
@@ -21,23 +23,6 @@ vi.mock('@/lib/artifact-records', async () => {
   }
 })
 
-const { viewports } = vi.hoisted(() => ({
-  viewports: [] as Array<{ atlas?: string; name?: string }>
-}))
-
-vi.mock('@/lib/generator/viewport/ArtifactViewportPanel', () => ({
-  ArtifactViewportPanel: ({
-    artifact,
-    placeholder
-  }: {
-    artifact: unknown
-    placeholder?: string
-  }) => {
-    viewports.push((artifact ?? {}) as { atlas?: string; name?: string })
-    return <div data-testid="viewport">{artifact ? 'scene' : placeholder}</div>
-  }
-}))
-
 function record(slug: string, overrides: Record<string, unknown> = {}) {
   return {
     slug,
@@ -52,34 +37,41 @@ function record(slug: string, overrides: Record<string, unknown> = {}) {
   }
 }
 
-describe('ClothingCollection', () => {
+describe('ClothingList', () => {
   beforeEach(() => {
     mocks.loadArtifactRecords.mockReset()
     mocks.readAtlasDataUrl.mockReset()
     mocks.readStillDataUrl.mockReset()
     mocks.readAtlasDataUrl.mockResolvedValue('data:image/png;base64,AAAA')
     mocks.readStillDataUrl.mockResolvedValue(null)
-    viewports.length = 0
+    useRobloxSelectionStore.setState({ pickedByProject: {} })
+    useRobloxRecordsStore.setState({
+      recordsByProject: {},
+      loaded: {},
+      atlases: {},
+      stills: {},
+      reading: {}
+    })
   })
 
   it('invites a generation when the project holds nothing', async () => {
     mocks.loadArtifactRecords.mockResolvedValue([])
-    render(<ClothingCollection projectPath="/p" />)
+    render(<ClothingList projectPath="/p" />)
     expect(await screen.findByText(/No garment yet/)).toBeInTheDocument()
     expect(mocks.loadArtifactRecords).toHaveBeenCalledWith('/p')
   })
 
-  it('lists every record and selects the newest by default', async () => {
+  it('lists every record with its kind and current version', async () => {
     mocks.loadArtifactRecords.mockResolvedValue([
       record('royal-robe'),
       record('desert-camo', { versions: [{ n: 1, at: 2, prompt: 'camo', atlas: 'v1.png' }] })
     ])
-    render(<ClothingCollection projectPath="/p" />)
+    render(<ClothingList projectPath="/p" />)
 
     const list = await screen.findByRole('list', { name: 'Collection' })
     expect(within(list).getByText('royal-robe')).toBeInTheDocument()
     expect(within(list).getByText('camo')).toBeInTheDocument()
-    expect(within(list).getByText('2 items')).toBeInTheDocument()
+    expect(screen.getByText('2 items')).toBeInTheDocument()
   })
 
   it('shows the current version, not the newest, when the pointer was restored', async () => {
@@ -92,49 +84,49 @@ describe('ClothingCollection', () => {
         ]
       })
     ])
-    render(<ClothingCollection projectPath="/p" />)
+    render(<ClothingList projectPath="/p" />)
 
     expect(await screen.findByText('shirt · v1')).toBeInTheDocument()
-    expect(mocks.readAtlasDataUrl).toHaveBeenCalledWith(
+    expect(mocks.readStillDataUrl).toHaveBeenCalledWith(
       expect.objectContaining({ slug: 'royal-robe' }),
       expect.objectContaining({ n: 1 })
     )
   })
 
-  it('hands the atlas to the viewport once it is read', async () => {
-    mocks.loadArtifactRecords.mockResolvedValue([record('royal-robe')])
-    render(<ClothingCollection projectPath="/p" />)
-
-    expect(await screen.findByText('scene')).toBeInTheDocument()
-    expect(viewports.some((entry) => entry.atlas === 'data:image/png;base64,AAAA')).toBe(true)
-  })
-
-  it('switches the viewport when another record is picked', async () => {
+  it('writes the pick to the store so the page can follow it', async () => {
     mocks.loadArtifactRecords.mockResolvedValue([record('royal-robe'), record('desert-camo')])
-    render(<ClothingCollection projectPath="/p" />)
+    render(<ClothingList projectPath="/p" />)
 
-    const camo = await screen.findByText('desert-camo')
-    fireEvent.click(camo)
-
-    expect(await screen.findByText(/\.termul\/generated\/shirt\/desert-camo/)).toBeInTheDocument()
+    fireEvent.click(await screen.findByText('desert-camo'))
+    expect(useRobloxSelectionStore.getState().pickedByProject['/p']).toBe('desert-camo')
   })
 
-  it('keeps a placeholder when the atlas could not be read', async () => {
+  it('marks the newest record while nothing was picked', async () => {
+    mocks.loadArtifactRecords.mockResolvedValue([record('royal-robe'), record('desert-camo')])
+    render(<ClothingList projectPath="/p" />)
+
+    expect(await screen.findByRole('button', { name: /royal-robe/ })).toHaveAttribute(
+      'aria-current',
+      'true'
+    )
+  })
+
+  it('falls back to the newest record when the pick names one that is gone', async () => {
+    useRobloxSelectionStore.setState({ pickedByProject: { '/p': 'deleted-slug' } })
     mocks.loadArtifactRecords.mockResolvedValue([record('royal-robe')])
-    mocks.readAtlasDataUrl.mockResolvedValue(null)
-    render(<ClothingCollection projectPath="/p" />)
+    render(<ClothingList projectPath="/p" />)
 
-    expect(await screen.findByText(/Reading v1/)).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /royal-robe/ })).toHaveAttribute(
+      'aria-current',
+      'true'
+    )
   })
 
-  it('warns about a version that failed its checks', async () => {
-    mocks.loadArtifactRecords.mockResolvedValue([
-      record('royal-robe', {
-        versions: [{ n: 1, at: 1, prompt: 'bad', ok: false, atlas: 'v1.png' }]
-      })
-    ])
-    render(<ClothingCollection projectPath="/p" />)
+  it('renders the generator list above the collection', async () => {
+    mocks.loadArtifactRecords.mockResolvedValue([record('royal-robe')])
+    render(<ClothingList projectPath="/p" />)
 
-    expect(await screen.findByText('failed')).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /Clothing/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Animation/ })).toBeDisabled()
   })
 })

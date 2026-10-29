@@ -7,7 +7,8 @@ import type { ShellLastColumnTab } from '@/stores/shell-layout-store'
 const TABS: ReadonlyArray<{ id: ShellLastColumnTab; label: string }> = [
   { id: 'chats', label: 'Chats' },
   { id: 'explorer', label: 'Explorer' },
-  { id: 'changes', label: 'Changes' }
+  { id: 'changes', label: 'Changes' },
+  { id: 'roblox', label: 'Roblox' }
 ]
 
 export function columnTabId(tab: ShellLastColumnTab): string {
