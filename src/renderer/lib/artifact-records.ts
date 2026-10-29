@@ -82,6 +82,23 @@ function parseVersion(raw: unknown): RecordVersion | null {
   }
 }
 
+/**
+ * The garment kind a record holds.
+ *
+ * The host files a record under the *generator* (`clothing`), which is the folder
+ * name, and writes no `kind` of its own. The garment type lives in each version's
+ * `design.type` (`shirt` / `pants` / `tshirt`), which is what a row should show.
+ * Reading the folder name instead printed "clothing" on every row.
+ */
+function kindOf(fields: Record<string, unknown>, versions: RecordVersion[]): string {
+  const declared = typeof fields.kind === 'string' ? fields.kind : undefined
+  const fromDesign = versions
+    .map((version) => (version.design as { type?: unknown } | undefined)?.type)
+    .find((type): type is string => typeof type === 'string')
+  if (fromDesign) return fromDesign
+  return declared ?? 'clothing'
+}
+
 /** Parse one `item.json`. Returns `null` for a record this build cannot read. */
 export function parseRecord(text: string, dir: string): ArtifactRecord | null {
   let raw: unknown
@@ -103,7 +120,7 @@ export function parseRecord(text: string, dir: string): ArtifactRecord | null {
   const current = asNumber(fields.current) ?? versions[versions.length - 1]!.n
   return {
     slug,
-    kind: typeof fields.kind === 'string' ? fields.kind : 'clothing',
+    kind: kindOf(fields, versions),
     current,
     createdAt: asNumber(fields.createdAt) ?? 0,
     updatedAt: asNumber(fields.updatedAt) ?? 0,

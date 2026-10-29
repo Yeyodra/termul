@@ -80,6 +80,30 @@ describe('parseRecord', () => {
     expect(parseRecord(JSON.stringify({ versions: [{ n: 1 }] }), '/p/x')).toBeNull()
   })
 
+  it('reads the garment type from the design, not from the folder name', () => {
+    // A real item.json has no root `kind`; the host files it under the generator
+    // (`clothing`). The type a row shows comes from `versions[].design.type`.
+    const record = parseRecord(
+      recordText({
+        kind: undefined,
+        versions: [{ n: 1, at: 1, design: { type: 'pants' }, atlas: 'v1.png' }]
+      }),
+      '/p/.termul/generated/clothing/celana-biru'
+    )
+    expect(record!.kind).toBe('pants')
+  })
+
+  it('keeps a declared kind when the design carries none', () => {
+    const record = parseRecord(
+      recordText({
+        kind: 'clothing',
+        versions: [{ n: 1, at: 1, atlas: 'v1.png' }]
+      }),
+      '/p/x'
+    )
+    expect(record!.kind).toBe('clothing')
+  })
+
   it('falls back to the directory name when the record carries no slug', () => {
     const record = parseRecord(
       recordText({ slug: undefined }),
