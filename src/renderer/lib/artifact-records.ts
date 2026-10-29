@@ -88,15 +88,30 @@ function parseVersion(raw: unknown): RecordVersion | null {
  * The host files a record under the *generator* (`clothing`), which is the folder
  * name, and writes no `kind` of its own. The garment type lives in each version's
  * `design.type` (`shirt` / `pants` / `tshirt`), which is what a row should show.
- * Reading the folder name instead printed "clothing" on every row.
+ *
+ * The CURRENT version decides, not the first one that has a type. A record whose
+ * versions disagree - which an earlier bug could produce by revising with the
+ * picker's kind instead of the record's - would otherwise report the kind of its
+ * oldest version, and a revision would then be written into the wrong template
+ * folder. The folder name is the last fallback, since it names the generator, not
+ * the garment.
  */
 function kindOf(fields: Record<string, unknown>, versions: RecordVersion[]): string {
-  const declared = typeof fields.kind === 'string' ? fields.kind : undefined
-  const fromDesign = versions
-    .map((version) => (version.design as { type?: unknown } | undefined)?.type)
-    .find((type): type is string => typeof type === 'string')
-  if (fromDesign) return fromDesign
-  return declared ?? 'clothing'
+  const typeOf = (version: RecordVersion | undefined): string | undefined => {
+    const type = (version?.design as { type?: unknown } | undefined)?.type
+    return typeof type === 'string' ? type : undefined
+  }
+
+  const declared = typeof fields.current === 'number' ? fields.current : undefined
+  const current =
+    declared !== undefined ? versions.find((version) => version.n === declared) : undefined
+  const fromCurrent = typeOf(current)
+  if (fromCurrent) return fromCurrent
+
+  const fromAny = versions.map(typeOf).find((type): type is string => type !== undefined)
+  if (fromAny) return fromAny
+
+  return typeof fields.kind === 'string' ? fields.kind : 'clothing'
 }
 
 /** Parse one `item.json`. Returns `null` for a record this build cannot read. */

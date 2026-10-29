@@ -104,6 +104,38 @@ describe('parseRecord', () => {
     expect(record!.kind).toBe('clothing')
   })
 
+  it('reads the kind from the current version, not the oldest one', () => {
+    // A record whose versions disagree is what an earlier bug produced: revising
+    // with the picker's kind wrote a pants design into a shirt record. Reading the
+    // first version would report the wrong template and send the next revision to
+    // the wrong folder.
+    const record = parseRecord(
+      recordText({
+        current: 2,
+        versions: [
+          { n: 1, at: 1, design: { type: 'pants' }, atlas: 'v1.png' },
+          { n: 2, at: 2, design: { type: 'shirt' }, atlas: 'v2.png' }
+        ]
+      }),
+      '/p/x'
+    )
+    expect(record!.kind).toBe('shirt')
+  })
+
+  it('follows the pointer when it is restored to an older version', () => {
+    const record = parseRecord(
+      recordText({
+        current: 1,
+        versions: [
+          { n: 1, at: 1, design: { type: 'pants' }, atlas: 'v1.png' },
+          { n: 2, at: 2, design: { type: 'shirt' }, atlas: 'v2.png' }
+        ]
+      }),
+      '/p/x'
+    )
+    expect(record!.kind).toBe('pants')
+  })
+
   it('falls back to the directory name when the record carries no slug', () => {
     const record = parseRecord(
       recordText({ slug: undefined }),
