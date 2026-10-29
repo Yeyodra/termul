@@ -62,11 +62,11 @@ export function NodePipeline({
   const running = stage.state === 'running'
 
   return (
-    <div className="flex shrink-0 items-stretch gap-0 overflow-x-auto px-3 pt-2">
+    <div className="grid shrink-0 grid-cols-4 items-stretch gap-1 px-3 pt-2">
       <button
         type="button"
         onClick={() => onOpenTab('Checks')}
-        className={cn(NODE, 'min-w-[112px] flex-1 hover:bg-muted/60')}
+        className={cn(NODE, 'hover:bg-muted/60')}
       >
         <span className={LABEL}>clothing/type</span>
         <span className={cn(VALUE, 'flex items-center gap-1')}>
@@ -85,12 +85,10 @@ export function NodePipeline({
         </span>
       </button>
 
-      <Arrow />
-
       <button
         type="button"
         onClick={() => onOpenTab('Layers')}
-        className={cn(NODE, 'min-w-[112px] flex-1 hover:bg-muted/60')}
+        className={cn(NODE, 'hover:bg-muted/60')}
       >
         <span className={LABEL}>clothing/pattern</span>
         <span className={cn(VALUE, 'font-normal')}>
@@ -102,16 +100,10 @@ export function NodePipeline({
         </span>
       </button>
 
-      <Arrow />
-
       <button
         type="button"
         onClick={() => onOpenTab('Regions')}
-        className={cn(
-          NODE,
-          'min-w-[112px] flex-1 hover:bg-muted/60',
-          running && 'border-warning/60'
-        )}
+        className={cn(NODE, 'hover:bg-muted/60', running && 'border-warning/60')}
       >
         <span className={LABEL}>clothing/template</span>
         <span className={cn(VALUE, 'flex items-center gap-1')}>
@@ -124,12 +116,10 @@ export function NodePipeline({
         </span>
       </button>
 
-      <Arrow />
-
       <button
         type="button"
         onClick={() => onOpenTab('Use it')}
-        className={cn(NODE, 'min-w-[112px] flex-1 hover:bg-muted/60')}
+        className={cn(NODE, 'hover:bg-muted/60')}
       >
         <span className={LABEL}>roblox/publish</span>
         <span className={cn(VALUE, 'flex items-center gap-1')}>
