@@ -118,6 +118,85 @@ async function readRecord(
   return parseRecord(file.data.content, dir)
 }
 
+export type RestoreOutcome =
+  | { ok: true }
+  | {
+      ok: false
+      reason: 'missing-version' | 'no-atlas' | 'conflict' | 'write-failed'
+      message: string
+    }
+
+/**
+ * Move a record's `current` pointer to another version and write it back.
+ *
+ * Deliberately not a re-render: the viewport reads `atlas` from the version the
+ * pointer names, so moving the pointer is the whole operation. RobloxKit can
+ * rebuild a thumbnail from `design` here; Termul cannot, because the design in
+ * `item.json` is unvalidated `unknown` and no renderer accepts it.
+ *
+ * A version whose atlas is gone is refused rather than accepted: restoring to it
+ * would leave the viewport with nothing to draw, which reads as a bug rather
+ * than as the missing file it is.
+ *
+ * The write carries the file's sha256 as a precondition, so a generation that
+ * lands between the read and the write fails the write instead of silently
+ * dropping the version it just appended.
+ */
+export async function restoreVersion(record: ArtifactRecord, n: number): Promise<RestoreOutcome> {
+  const target = record.versions.find((version) => version.n === n)
+  if (!target) {
+    return {
+      ok: false,
+      reason: 'missing-version',
+      message: `v${n} is not in this record`
+    }
+  }
+
+  const atlas = await readAttachmentBytes(joinPath(record.dir, target.atlas)).catch(() => null)
+  if (!atlas) {
+    return {
+      ok: false,
+      reason: 'no-atlas',
+      message: `v${n} has no atlas file, so it cannot be shown`
+    }
+  }
+
+  const file = await filesystemApi.readFile(record.itemPath)
+  if (!file.success || !file.data) {
+    return { ok: false, reason: 'write-failed', message: 'could not read item.json' }
+  }
+
+  let raw: unknown
+  try {
+    raw = JSON.parse(file.data.content)
+  } catch {
+    return { ok: false, reason: 'write-failed', message: 'item.json is not valid JSON' }
+  }
+  if (!raw || typeof raw !== 'object') {
+    return { ok: false, reason: 'write-failed', message: 'item.json is not an object' }
+  }
+
+  const next = {
+    ...(raw as Record<string, unknown>),
+    current: n,
+    updatedAt: Date.now()
+  }
+
+  const written = await filesystemApi.writeFile(
+    record.itemPath,
+    JSON.stringify(next),
+    file.data.contentHash ? { expected: { sha256: file.data.contentHash } } : undefined
+  )
+  if (!written.success) {
+    return {
+      ok: false,
+      reason: written.code === 'PRECONDITION_FAILED' ? 'conflict' : 'write-failed',
+      message: written.error ?? 'could not write item.json'
+    }
+  }
+  return { ok: true }
+}
+
 /**
  * The project's records, most recently updated first. A record directory that
  * cannot be read is skipped rather than failing the whole collection: one

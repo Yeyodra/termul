@@ -13,7 +13,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react'
-import { type ArtifactRecord, currentVersion } from '@/lib/artifact-records'
+import { type ArtifactRecord, currentVersion, restoreVersion } from '@/lib/artifact-records'
 import type { DesignType } from '@/lib/generator/engines/clothing/schema'
 import { ArtifactViewportPanel } from '@/lib/generator/viewport/ArtifactViewportPanel'
 import type { ClothingArtifact } from '@/lib/generator/viewport/artifact'
@@ -64,6 +64,7 @@ export function ClothingViewport({ projectPath }: ClothingViewportProps): React.
   const records = useProjectRecords(projectPath)
   const picked = usePickedSlug(projectPath)
   const load = useRobloxRecordsStore((state) => state.load)
+  const refresh = useRobloxRecordsStore((state) => state.refresh)
   const [paint, setPaint] = useState<PaintReport | null>(null)
 
   useEffect(() => {
@@ -103,6 +104,19 @@ export function ClothingViewport({ projectPath }: ClothingViewportProps): React.
     }
   }, [atlas, active, type])
 
+  /**
+   * Move the pointer, then re-read the project so the viewport, the collection
+   * row and the Inspector all follow from one source. A refusal is thrown, not
+   * swallowed: the Versions tab shows the reason, and a silent failure would
+   * leave the user thinking the restore worked.
+   */
+  const handleRestore = async (n: number): Promise<void> => {
+    if (!active) return
+    const outcome = await restoreVersion(active, n)
+    if (!outcome.ok) throw new Error(outcome.message)
+    refresh(projectPath)
+  }
+
   return (
     <div className="flex min-h-0 flex-1">
       <div className="flex min-w-0 flex-1 flex-col">
@@ -139,7 +153,7 @@ export function ClothingViewport({ projectPath }: ClothingViewportProps): React.
         ) : null}
       </div>
 
-      <RobloxInspector record={active} version={version} paint={paint} />
+      <RobloxInspector record={active} version={version} paint={paint} onRestore={handleRestore} />
     </div>
   )
 }

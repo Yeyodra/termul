@@ -1,5 +1,5 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
 import type { ArtifactRecord, RecordVersion } from '@/lib/artifact-records'
 import { RobloxInspector } from './RobloxInspector'
 
@@ -132,6 +132,110 @@ describe('RobloxInspector', () => {
     render(<RobloxInspector record={record()} version={version(1)} paint={null} />)
     fireEvent.click(screen.getByRole('tab', { name: 'Use it' }))
     expect(screen.getByText(/not wired yet/)).toBeInTheDocument()
+  })
+
+  it('hides the Regions tab for a t-shirt, which is one full-bleed graphic', () => {
+    render(
+      <RobloxInspector
+        record={record({ kind: 'tshirt' })}
+        version={version(1, { design: { type: 'tshirt', layers: [{ kind: 'solid' }] } })}
+        paint={null}
+      />
+    )
+    expect(screen.queryByRole('tab', { name: 'Regions' })).toBeNull()
+    expect(screen.getByRole('tab', { name: 'Checks' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Layers' })).toBeInTheDocument()
+  })
+
+  it('keeps the Regions tab for a shirt and a pair of pants', () => {
+    const { rerender } = render(
+      <RobloxInspector record={record()} version={version(1)} paint={null} />
+    )
+    expect(screen.getByRole('tab', { name: 'Regions' })).toBeInTheDocument()
+
+    rerender(
+      <RobloxInspector
+        record={record({ kind: 'pants' })}
+        version={version(1, { design: { type: 'pants', layers: [{ kind: 'solid' }] } })}
+        paint={null}
+      />
+    )
+    expect(screen.getByRole('tab', { name: 'Regions' })).toBeInTheDocument()
+  })
+
+  it('falls back to Checks when the selected tab disappears', () => {
+    const { rerender } = render(
+      <RobloxInspector record={record()} version={version(1)} paint={null} />
+    )
+    fireEvent.click(screen.getByRole('tab', { name: 'Regions' }))
+    expect(screen.getByRole('tab', { name: 'Regions' })).toHaveAttribute('aria-selected', 'true')
+
+    rerender(
+      <RobloxInspector
+        record={record({ kind: 'tshirt' })}
+        version={version(1, { design: { type: 'tshirt', layers: [{ kind: 'solid' }] } })}
+        paint={null}
+      />
+    )
+    expect(screen.getByRole('tab', { name: 'Checks' })).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('offers Restore on every version but the current one', () => {
+    const twoVersions = record({ current: 1, versions: [version(1), version(2)] })
+    render(
+      <RobloxInspector record={twoVersions} version={version(1)} paint={null} onRestore={vi.fn()} />
+    )
+    fireEvent.click(screen.getByRole('tab', { name: 'Versions' }))
+
+    const rows = screen.getAllByRole('listitem')
+    expect(
+      within(rows[0] as HTMLElement).getByRole('button', { name: 'Restore' })
+    ).toBeInTheDocument()
+    expect(within(rows[1] as HTMLElement).queryByRole('button', { name: 'Restore' })).toBeNull()
+  })
+
+  it('restores the version whose button was pressed', async () => {
+    const onRestore = vi.fn(async () => {})
+    const twoVersions = record({ current: 1, versions: [version(1), version(2)] })
+    render(
+      <RobloxInspector
+        record={twoVersions}
+        version={version(1)}
+        paint={null}
+        onRestore={onRestore}
+      />
+    )
+    fireEvent.click(screen.getByRole('tab', { name: 'Versions' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Restore' }))
+
+    await waitFor(() => expect(onRestore).toHaveBeenCalledWith(2))
+  })
+
+  it('shows the reason a restore was refused instead of pretending it worked', async () => {
+    const onRestore = vi.fn(async () => {
+      throw new Error('v2 has no atlas file, so it cannot be shown')
+    })
+    const twoVersions = record({ current: 1, versions: [version(1), version(2)] })
+    render(
+      <RobloxInspector
+        record={twoVersions}
+        version={version(1)}
+        paint={null}
+        onRestore={onRestore}
+      />
+    )
+    fireEvent.click(screen.getByRole('tab', { name: 'Versions' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Restore' }))
+
+    expect(await screen.findByText(/has no atlas file/)).toBeInTheDocument()
+  })
+
+  it('disables Restore when no handler was wired', () => {
+    const twoVersions = record({ current: 1, versions: [version(1), version(2)] })
+    render(<RobloxInspector record={twoVersions} version={version(1)} paint={null} />)
+    fireEvent.click(screen.getByRole('tab', { name: 'Versions' }))
+
+    expect(screen.getByRole('button', { name: 'Restore' })).toBeDisabled()
   })
 
   it('collapses to a rail and opens again', () => {

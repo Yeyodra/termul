@@ -5,21 +5,24 @@ import {
   loadArtifactRecords,
   parseRecord,
   readAtlasDataUrl,
-  readStillDataUrl
+  readStillDataUrl,
+  restoreVersion
 } from './artifact-records'
 
 const { mocks } = vi.hoisted(() => ({
   mocks: {
     readDirectory: vi.fn(),
     readFile: vi.fn(),
-    readAttachmentBytes: vi.fn()
+    readAttachmentBytes: vi.fn(),
+    writeFile: vi.fn()
   }
 }))
 
 vi.mock('@/lib/filesystem-api', () => ({
   filesystemApi: {
     readDirectory: mocks.readDirectory,
-    readFile: mocks.readFile
+    readFile: mocks.readFile,
+    writeFile: mocks.writeFile
   }
 }))
 
@@ -207,5 +210,78 @@ describe('reading a version picture', () => {
     mocks.readAttachmentBytes.mockResolvedValue(new Uint8Array([1]))
     expect(await readStillDataUrl(record, record.versions[0]!)).toContain('data:image/png')
     expect(await readStillDataUrl(record, { ...record.versions[0]!, still: undefined })).toBeNull()
+  })
+})
+
+describe('restoreVersion', () => {
+  const record: ArtifactRecord = parseRecord(recordText(), '/p/.termul/generated/shirt/royal-robe')!
+
+  beforeEach(() => {
+    mocks.readAttachmentBytes.mockReset()
+    mocks.readFile.mockReset()
+    mocks.writeFile.mockReset()
+    mocks.readAttachmentBytes.mockResolvedValue(new Uint8Array([137, 80, 78, 71]))
+    mocks.readFile.mockResolvedValue({
+      success: true,
+      data: { content: recordText(), encoding: 'utf8', size: 1, modifiedAt: 0, contentHash: 'abc' }
+    })
+    mocks.writeFile.mockResolvedValue({ success: true, data: undefined })
+  })
+
+  it('moves the pointer and writes item.json back', async () => {
+    expect(await restoreVersion(record, 1)).toEqual({ ok: true })
+
+    expect(mocks.writeFile).toHaveBeenCalledTimes(1)
+    const [path, content] = mocks.writeFile.mock.calls[0] as [string, string]
+    expect(path).toBe('/p/.termul/generated/shirt/royal-robe/item.json')
+    const written = JSON.parse(content)
+    expect(written.current).toBe(1)
+    expect(written.versions).toHaveLength(2)
+    expect(written.updatedAt).toBeGreaterThan(record.updatedAt)
+  })
+
+  it('sends the read hash as the write precondition', async () => {
+    await restoreVersion(record, 1)
+    const [, , options] = mocks.writeFile.mock.calls[0] as [string, string, unknown]
+    expect(options).toEqual({ expected: { sha256: 'abc' } })
+  })
+
+  it('omits the precondition when the read carried no hash, as on desktop', async () => {
+    mocks.readFile.mockResolvedValue({
+      success: true,
+      data: { content: recordText(), encoding: 'utf8', size: 1, modifiedAt: 0 }
+    })
+    await restoreVersion(record, 1)
+    const [, , options] = mocks.writeFile.mock.calls[0] as [string, string, unknown]
+    expect(options).toBeUndefined()
+  })
+
+  it('refuses a version the record does not hold', async () => {
+    expect(await restoreVersion(record, 9)).toMatchObject({ ok: false, reason: 'missing-version' })
+    expect(mocks.writeFile).not.toHaveBeenCalled()
+  })
+
+  it('refuses a version whose atlas is gone instead of leaving the viewport blank', async () => {
+    mocks.readAttachmentBytes.mockRejectedValue(new Error('ENOENT'))
+    expect(await restoreVersion(record, 1)).toMatchObject({ ok: false, reason: 'no-atlas' })
+    expect(mocks.writeFile).not.toHaveBeenCalled()
+  })
+
+  it('reports a conflict when the file changed under it', async () => {
+    mocks.writeFile.mockResolvedValue({
+      success: false,
+      error: 'changed since read',
+      code: 'PRECONDITION_FAILED'
+    })
+    expect(await restoreVersion(record, 1)).toMatchObject({ ok: false, reason: 'conflict' })
+  })
+
+  it('refuses to write over a record it cannot parse', async () => {
+    mocks.readFile.mockResolvedValue({
+      success: true,
+      data: { content: 'not json', encoding: 'utf8', size: 1, modifiedAt: 0 }
+    })
+    expect(await restoreVersion(record, 1)).toMatchObject({ ok: false, reason: 'write-failed' })
+    expect(mocks.writeFile).not.toHaveBeenCalled()
   })
 })

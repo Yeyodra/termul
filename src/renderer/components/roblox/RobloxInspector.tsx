@@ -160,11 +160,29 @@ function Layers({ version }: { version: RecordVersion }) {
 
 function Versions({
   record,
-  current
+  current,
+  onRestore
 }: {
   record: ArtifactRecord
   current: RecordVersion
+  onRestore?: (n: number) => Promise<void>
 }): React.JSX.Element {
+  const [busy, setBusy] = useState<number | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const restore = async (n: number): Promise<void> => {
+    if (!onRestore || busy !== null) return
+    setBusy(n)
+    setError(null)
+    try {
+      await onRestore(n)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause))
+    } finally {
+      setBusy(null)
+    }
+  }
+
   return (
     <div>
       <p className={SECTION_CLASS}>Versions</p>
@@ -191,15 +209,33 @@ function Versions({
                   {new Date(version.at).toLocaleDateString()}
                 </span>
               </span>
-              {isCurrent && (
+              {isCurrent ? (
                 <span className="shrink-0 rounded bg-primary/15 px-1.5 py-0.5 text-3xs font-semibold tracking-wide text-primary uppercase">
                   Current
                 </span>
+              ) : (
+                <button
+                  type="button"
+                  disabled={!onRestore || busy !== null}
+                  onClick={() => void restore(version.n)}
+                  className="shrink-0 rounded border border-border px-1.5 py-0.5 text-3xs text-secondary-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:opacity-40"
+                >
+                  {busy === version.n ? 'Restoring…' : 'Restore'}
+                </button>
               )}
             </li>
           )
         })}
       </ul>
+      {error && (
+        <p className="mt-2 rounded border border-destructive/40 bg-destructive/10 px-2 py-1 text-3xs leading-relaxed text-destructive">
+          {error}
+        </p>
+      )}
+      <p className="mt-2 text-3xs leading-relaxed text-muted-foreground">
+        Restoring moves the pointer to that version. It does not re-render: the viewport draws the
+        atlas stored with it.
+      </p>
     </div>
   )
 }
@@ -217,15 +253,22 @@ interface RobloxInspectorProps {
   record: ArtifactRecord | null
   version: RecordVersion | null
   paint: PaintReport | null
+  onRestore?: (n: number) => Promise<void>
 }
 
 export function RobloxInspector({
   record,
   version,
-  paint
+  paint,
+  onRestore
 }: RobloxInspectorProps): React.JSX.Element {
   const [open, setOpen] = useState(true)
   const [tab, setTab] = useState<TabId>('Checks')
+  // A t-shirt is one full-bleed graphic, so a per-region breakdown says nothing
+  // the engine itself does not skip (`check.ts` skips it for the same reason).
+  const regionsApply = !version || versionFacts(version).type !== 'tshirt'
+  const visibleTabs: readonly TabId[] = regionsApply ? TABS : TABS.filter((id) => id !== 'Regions')
+  const activeTab: TabId = visibleTabs.includes(tab) ? tab : 'Checks'
 
   if (!open) {
     return (
@@ -264,14 +307,14 @@ export function RobloxInspector({
       </div>
 
       <div role="tablist" aria-label="Inspector" className="flex flex-wrap gap-px px-2 pt-1">
-        {TABS.map((id) => (
+        {visibleTabs.map((id) => (
           <button
             key={id}
             type="button"
             role="tab"
-            aria-selected={tab === id}
+            aria-selected={activeTab === id}
             onClick={() => setTab(id)}
-            className={cn(TAB_CLASS, tab === id && TAB_ON)}
+            className={cn(TAB_CLASS, activeTab === id && TAB_ON)}
           >
             {id}
           </button>
@@ -290,11 +333,13 @@ export function RobloxInspector({
               {record.kind} · v{version.n}
             </p>
 
-            {tab === 'Checks' && <Checks version={version} paint={paint} />}
-            {tab === 'Regions' && <Regions version={version} paint={paint} />}
-            {tab === 'Layers' && <Layers version={version} />}
-            {tab === 'Versions' && <Versions record={record} current={version} />}
-            {tab === 'Use it' && <UseIt />}
+            {activeTab === 'Checks' && <Checks version={version} paint={paint} />}
+            {activeTab === 'Regions' && <Regions version={version} paint={paint} />}
+            {activeTab === 'Layers' && <Layers version={version} />}
+            {activeTab === 'Versions' && (
+              <Versions record={record} current={version} onRestore={onRestore} />
+            )}
+            {activeTab === 'Use it' && <UseIt />}
           </>
         )}
       </div>
