@@ -277,6 +277,6 @@ describe('RobloxInspector', () => {
 
     expect(screen.queryByRole('tablist')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Show the inspector' }))
-    expect(screen.getByRole('tablist', { name: 'Inspector' })).toBeInTheDocument()
+    expect(screen.getByRole('tablist', { name: 'Inspector sections' })).toBeInTheDocument()
   })
 })

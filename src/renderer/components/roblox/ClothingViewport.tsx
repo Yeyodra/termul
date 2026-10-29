@@ -35,6 +35,17 @@ function isDesignType(value: unknown): value is DesignType {
   return typeof value === 'string' && (TYPES as readonly string[]).includes(value)
 }
 
+/**
+ * A path as a person reads it.
+ *
+ * The records store normalises a Windows root to forward slashes, which turns a
+ * verbatim prefix into `//?/`. That is correct for the fs plugin and wrong on
+ * screen, so the display drops it and goes back to backslashes.
+ */
+function displayPath(path: string): string {
+  return path.replace(/^\/\/\?\//, '').replace(/\//g, '\\')
+}
+
 function typeOf(record: ArtifactRecord): DesignType {
   const design = currentVersion(record).design as { type?: unknown } | undefined
   return isDesignType(design?.type) ? design.type : 'shirt'
@@ -171,7 +182,7 @@ export function ClothingViewport({ projectPath }: ClothingViewportProps): React.
             </div>
             <div className="flex min-w-0 gap-1">
               <dt>At</dt>
-              <dd className="truncate font-mono">{active.dir}</dd>
+              <dd className="truncate font-mono">{displayPath(active.dir)}</dd>
             </div>
           </dl>
         ) : null}

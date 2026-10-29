@@ -91,10 +91,10 @@ describe('ClothingViewport', () => {
     mocks.loadArtifactRecords.mockResolvedValue([record('royal-robe'), record('desert-camo')])
     renderViewport()
 
-    expect(await screen.findByText(/\.termul\/generated\/shirt\/royal-robe/)).toBeInTheDocument()
+    expect(await screen.findByText(/\.termul\\generated\\shirt\\royal-robe/)).toBeInTheDocument()
 
     useRobloxSelectionStore.setState({ pickedByProject: { '/p': 'desert-camo' } })
-    expect(await screen.findByText(/\.termul\/generated\/shirt\/desert-camo/)).toBeInTheDocument()
+    expect(await screen.findByText(/\.termul\\generated\\shirt\\desert-camo/)).toBeInTheDocument()
   })
 
   it('keeps a placeholder when the atlas could not be read', async () => {
