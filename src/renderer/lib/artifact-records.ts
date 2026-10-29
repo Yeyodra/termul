@@ -43,8 +43,22 @@ export interface ArtifactRecord {
   itemPath: string
 }
 
+/**
+ * Join a project root with a relative path, keeping one separator style.
+ *
+ * A project path from the host is a Windows path: backslashes, and often a
+ * `\\?\` verbatim prefix. Appending `/`-separated segments to that produces
+ * `C:\dir/.termul/generated`, which Windows tolerates but the fs plugin does not
+ * always resolve. Normalising the root to forward slashes first keeps the whole
+ * path in one style, which is what the rest of the renderer already uses.
+ */
 function joinPath(...parts: string[]): string {
-  return parts.join('/').replace(/\/{2,}/g, '/')
+  const [root, ...rest] = parts
+  const head = (root ?? '').replace(/\\/g, '/').replace(/\/+$/, '')
+  const tail = rest
+    .map((part) => part.replace(/\\/g, '/').replace(/^\/+|\/+$/g, ''))
+    .filter((part) => part.length > 0)
+  return [head, ...tail].join('/')
 }
 
 function asNumber(value: unknown): number | undefined {

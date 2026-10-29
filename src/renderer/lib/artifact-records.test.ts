@@ -135,6 +135,41 @@ describe('loadArtifactRecords', () => {
     expect(records.map((record) => record.slug)).toEqual(['fresh', 'old'])
   })
 
+  it('reads a Windows project path without mixing separators', async () => {
+    // A real project path from the host: backslashes and a verbatim prefix.
+    // Appending forward-slash segments used to produce `C:\dir/.termul/...`,
+    // which the fs plugin refused, so a project with 12 records read as empty.
+    const paths: string[] = []
+    mocks.readDirectory.mockImplementation(async (path: string) => {
+      paths.push(path)
+      return path.endsWith('.termul/generated')
+        ? { success: true, data: [dir('shirt')] }
+        : { success: true, data: [dir('robe')] }
+    })
+    mocks.readFile.mockResolvedValue({
+      success: true,
+      data: { content: recordText({ slug: 'robe' }), encoding: 'utf-8', size: 1, modifiedAt: 0 }
+    })
+
+    const records = await loadArtifactRecords('C:\\Users\\me\\proj')
+
+    expect(records.map((record) => record.slug)).toEqual(['robe'])
+    expect(paths[0]).toBe('C:/Users/me/proj/.termul/generated')
+    expect(paths[0]).not.toContain('\\')
+  })
+
+  it('keeps a verbatim prefix while normalising the separators', async () => {
+    const paths: string[] = []
+    mocks.readDirectory.mockImplementation(async (path: string) => {
+      paths.push(path)
+      return { success: true, data: [] }
+    })
+
+    await loadArtifactRecords('\\\\?\\C:\\Users\\me\\proj')
+
+    expect(paths[0]).toBe('//?/C:/Users/me/proj/.termul/generated')
+  })
+
   it('skips a record it cannot read instead of hiding the others', async () => {
     mocks.readDirectory.mockImplementation(async (path: string) =>
       path.endsWith('.termul/generated')
