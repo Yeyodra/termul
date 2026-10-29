@@ -179,9 +179,12 @@ describe('runPageGeneration', () => {
     })
     mocks.invoke.mockRejectedValue(new Error('not a registered project'))
 
+    // The message names both halves: the garment was drawn, and it was not
+    // saved. Saying only "not a registered project" left a user staring at a
+    // garment on screen with no record behind it.
     expect(await runPageGeneration({ projectPath: '/p', prompt: 'x', type: 'shirt' })).toEqual({
       status: 'failed',
-      error: 'not a registered project'
+      error: 'the garment was drawn but not saved: not a registered project'
     })
   })
 
