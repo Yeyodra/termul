@@ -3,6 +3,18 @@ import { describe, expect, it, vi } from 'vitest'
 import type { ArtifactRecord, RecordVersion } from '@/lib/artifact-records'
 import { RobloxInspector } from './RobloxInspector'
 
+const { savePngMock } = vi.hoisted(() => ({ savePngMock: vi.fn() }))
+
+vi.mock('@/lib/artifact-records', async () => {
+  const actual =
+    await vi.importActual<typeof import('@/lib/artifact-records')>('@/lib/artifact-records')
+  return { ...actual, savePng: savePngMock }
+})
+
+vi.mock('@/lib/api', () => ({
+  openerApi: { openUrlWithSystemBrowser: vi.fn(async () => ({ success: true, data: undefined })) }
+}))
+
 function version(n: number, overrides: Partial<RecordVersion> = {}): RecordVersion {
   return {
     n,
@@ -128,10 +140,31 @@ describe('RobloxInspector', () => {
     expect(within(rows[0] as HTMLElement).queryByText('Current')).toBeNull()
   })
 
-  it('admits that exporting is not wired yet', () => {
+  it('hands the upload to the user, and offers both steps', () => {
     render(<RobloxInspector record={record()} version={version(1)} paint={null} />)
     fireEvent.click(screen.getByRole('tab', { name: 'Use it' }))
-    expect(screen.getByText(/not wired yet/)).toBeInTheDocument()
+
+    expect(screen.getByText(/the upload is yours/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Save PNG to project/ })).toBeEnabled()
+    expect(screen.getByRole('button', { name: /Open Classic Shirts/ })).toBeInTheDocument()
+  })
+
+  it('saves the atlas and reports where it went', async () => {
+    savePngMock.mockResolvedValue('/p/royal-robe.png')
+    render(<RobloxInspector record={record()} version={version(1)} paint={null} />)
+    fireEvent.click(screen.getByRole('tab', { name: 'Use it' }))
+    fireEvent.click(screen.getByRole('button', { name: /Save PNG to project/ }))
+
+    expect(await screen.findByText(/Saved \/p\/royal-robe\.png/)).toBeInTheDocument()
+  })
+
+  it('shows why saving failed instead of claiming it worked', async () => {
+    savePngMock.mockRejectedValue(new Error('the project folder is gone'))
+    render(<RobloxInspector record={record()} version={version(1)} paint={null} />)
+    fireEvent.click(screen.getByRole('tab', { name: 'Use it' }))
+    fireEvent.click(screen.getByRole('button', { name: /Save PNG to project/ }))
+
+    expect(await screen.findByText(/the project folder is gone/)).toBeInTheDocument()
   })
 
   it('hides the Regions tab for a t-shirt, which is one full-bleed graphic', () => {

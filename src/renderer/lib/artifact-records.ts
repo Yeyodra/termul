@@ -301,3 +301,37 @@ export async function readStillDataUrl(
     return null
   }
 }
+
+/**
+ * Copy a version's atlas to `<project>/<slug>.png`, which is the file a user
+ * hands to Roblox.
+ *
+ * The atlas is already on disk inside the record, so this is a copy, not a
+ * re-render: Roblox wants the flat 585x559 sheet, and that is exactly what
+ * `v<n>.png` holds. Copying it to the project root keeps it findable, which is
+ * what RobloxKit's `saveClothingPng` does with the same intent.
+ *
+ * The write goes through `copyFile`, not `writeFile`: the latter takes text, so
+ * handing it base64 would produce a PNG of the base64 string.
+ *
+ * Returns the absolute path written.
+ */
+export async function savePng(record: ArtifactRecord): Promise<string> {
+  const version = currentVersion(record)
+  const source = joinPath(record.dir, version.atlas)
+
+  const marker = record.dir.lastIndexOf('/.termul/')
+  const root = marker > 0 ? record.dir.slice(0, marker) : record.dir
+  const name = String(record.slug || 'clothing')
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40)
+  const target = joinPath(root, `${name || 'clothing'}.png`)
+
+  const written = await filesystemApi.copyFile(source, target)
+  if (!written.success) {
+    throw new Error(written.error ?? 'could not write the PNG')
+  }
+  return target
+}

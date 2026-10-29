@@ -13,7 +13,13 @@
 
 import { useMemo, useState } from 'react'
 import { ChevronLeft, ChevronRight } from '@/components/icons'
-import type { ArtifactRecord, RecordVersion } from '@/lib/artifact-records'
+import { openerApi } from '@/lib/api'
+import {
+  type ArtifactRecord,
+  currentVersion,
+  type RecordVersion,
+  savePng
+} from '@/lib/artifact-records'
 import { type PaintReport, versionFacts } from '@/lib/roblox-inspector'
 import { cn } from '@/lib/utils'
 
@@ -240,12 +246,94 @@ function Versions({
   )
 }
 
-function UseIt() {
+/**
+ * Where Roblox accepts a classic garment upload, per kind.
+ *
+ * Roblox does not let an app publish classic clothing, so this is a handoff, not
+ * an upload: the panel saves the atlas and opens the right dashboard tab.
+ */
+const UPLOAD_GUIDE: Record<string, { label: string; url: string }> = {
+  shirt: {
+    label: 'Classic Shirts',
+    url: 'https://create.roblox.com/dashboard/creations?activeTab=Shirt'
+  },
+  pants: {
+    label: 'Classic Pants',
+    url: 'https://create.roblox.com/dashboard/creations?activeTab=Pants'
+  },
+  tshirt: {
+    label: 'T-Shirts',
+    url: 'https://create.roblox.com/dashboard/creations?activeTab=TShirt'
+  }
+}
+
+/** The file name RobloxKit uses: the slug, lowercased, capped. */
+export function exportName(record: ArtifactRecord): string {
+  const base = String(record.slug || 'clothing')
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40)
+  return base || 'clothing'
+}
+
+function UseIt({ record }: { record: ArtifactRecord | null }): React.JSX.Element {
+  const [status, setStatus] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null)
+  const [busy, setBusy] = useState(false)
+  const kind = record ? versionFacts(currentVersion(record)).type : 'shirt'
+  const guide = UPLOAD_GUIDE[kind] ?? UPLOAD_GUIDE.shirt!
+
+  const save = async (): Promise<void> => {
+    if (!record || busy) return
+    setBusy(true)
+    setStatus(null)
+    try {
+      const saved = await savePng(record)
+      setStatus({ tone: 'ok', text: `Saved ${saved}.` })
+    } catch (cause) {
+      setStatus({ tone: 'bad', text: cause instanceof Error ? cause.message : String(cause) })
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
-    <p className="text-[10.5px] leading-relaxed text-muted-foreground">
-      Exporting the PNG and opening Creator Dashboard is not wired yet. The atlas is on disk at the
-      path shown on the page.
-    </p>
+    <div className="flex flex-col gap-2">
+      <p className="text-[10.5px] leading-relaxed text-muted-foreground">
+        Roblox does not let apps publish classic clothing: the upload is yours.
+      </p>
+      <button
+        type="button"
+        disabled={!record || busy}
+        onClick={() => void save()}
+        className="rounded border border-border px-2 py-1 text-[10.5px] text-secondary-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:opacity-40"
+      >
+        {busy ? 'Saving…' : 'Save PNG to project'}
+      </button>
+      <button
+        type="button"
+        onClick={() => void openerApi.openUrlWithSystemBrowser(guide.url)}
+        className="rounded border border-border px-2 py-1 text-[10.5px] text-secondary-foreground transition-colors hover:bg-secondary hover:text-foreground"
+      >
+        Open {guide.label}
+      </button>
+      <ol className="m-0 flex list-decimal flex-col gap-1 pl-4 text-3xs leading-relaxed text-muted-foreground">
+        <li>Save the PNG above.</li>
+        <li>Open the dashboard tab for this kind.</li>
+        <li>Upload the file as a classic garment.</li>
+        <li>Set it for sale, then wear it in Studio.</li>
+      </ol>
+      {status && (
+        <p
+          className={cn(
+            'text-3xs leading-relaxed',
+            status.tone === 'ok' ? 'text-success' : 'text-destructive'
+          )}
+        >
+          {status.text}
+        </p>
+      )}
+    </div>
   )
 }
 
@@ -349,7 +437,7 @@ export function RobloxInspector({
             {activeTab === 'Versions' && (
               <Versions record={record} current={version} onRestore={onRestore} />
             )}
-            {activeTab === 'Use it' && <UseIt />}
+            {activeTab === 'Use it' && <UseIt record={record} />}
           </>
         )}
       </div>

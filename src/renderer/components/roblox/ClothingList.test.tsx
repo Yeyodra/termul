@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { MemoryRouter, useLocation } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useRobloxRecordsStore } from '@/stores/roblox-records-store'
 import { useRobloxSelectionStore } from '@/stores/roblox-selection-store'
@@ -22,6 +23,19 @@ vi.mock('@/lib/artifact-records', async () => {
     readStillDataUrl: mocks.readStillDataUrl
   }
 })
+
+function LocationProbe(): React.JSX.Element {
+  return <div data-testid="location">{useLocation().pathname}</div>
+}
+
+/** The list navigates on a pick, so it needs a router. */
+function renderList(): void {
+  render(
+    <MemoryRouter initialEntries={['/roblox/clothing']}>
+      <ClothingList projectPath="/p" />
+    </MemoryRouter>
+  )
+}
 
 function record(slug: string, overrides: Record<string, unknown> = {}) {
   return {
@@ -56,7 +70,7 @@ describe('ClothingList', () => {
 
   it('invites a generation when the project holds nothing', async () => {
     mocks.loadArtifactRecords.mockResolvedValue([])
-    render(<ClothingList projectPath="/p" />)
+    renderList()
     expect(await screen.findByText(/No garment yet/)).toBeInTheDocument()
     expect(mocks.loadArtifactRecords).toHaveBeenCalledWith('/p')
   })
@@ -66,7 +80,7 @@ describe('ClothingList', () => {
       record('royal-robe'),
       record('desert-camo', { versions: [{ n: 1, at: 2, prompt: 'camo', atlas: 'v1.png' }] })
     ])
-    render(<ClothingList projectPath="/p" />)
+    renderList()
 
     const list = await screen.findByRole('list', { name: 'Collection' })
     expect(within(list).getByText('royal-robe')).toBeInTheDocument()
@@ -84,7 +98,7 @@ describe('ClothingList', () => {
         ]
       })
     ])
-    render(<ClothingList projectPath="/p" />)
+    renderList()
 
     expect(await screen.findByText('Shirt · v1')).toBeInTheDocument()
     expect(mocks.readStillDataUrl).toHaveBeenCalledWith(
@@ -95,15 +109,31 @@ describe('ClothingList', () => {
 
   it('writes the pick to the store so the page can follow it', async () => {
     mocks.loadArtifactRecords.mockResolvedValue([record('royal-robe'), record('desert-camo')])
-    render(<ClothingList projectPath="/p" />)
+    renderList()
 
     fireEvent.click(await screen.findByText('desert-camo'))
     expect(useRobloxSelectionStore.getState().pickedByProject['/p']).toBe('desert-camo')
   })
 
+  it('opens the feature page when a row is picked, as RobloxKit does', async () => {
+    mocks.loadArtifactRecords.mockResolvedValue([record('royal-robe')])
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <ClothingList projectPath="/p" />
+        <LocationProbe />
+      </MemoryRouter>
+    )
+
+    expect(await screen.findByTestId('location')).toHaveTextContent('/')
+    fireEvent.click(await screen.findByText('royal-robe'))
+    await waitFor(() =>
+      expect(screen.getByTestId('location')).toHaveTextContent('/roblox/clothing')
+    )
+  })
+
   it('marks the newest record while nothing was picked', async () => {
     mocks.loadArtifactRecords.mockResolvedValue([record('royal-robe'), record('desert-camo')])
-    render(<ClothingList projectPath="/p" />)
+    renderList()
 
     expect(await screen.findByRole('button', { name: /royal-robe/ })).toHaveAttribute(
       'aria-current',
@@ -114,7 +144,7 @@ describe('ClothingList', () => {
   it('falls back to the newest record when the pick names one that is gone', async () => {
     useRobloxSelectionStore.setState({ pickedByProject: { '/p': 'deleted-slug' } })
     mocks.loadArtifactRecords.mockResolvedValue([record('royal-robe')])
-    render(<ClothingList projectPath="/p" />)
+    renderList()
 
     expect(await screen.findByRole('button', { name: /royal-robe/ })).toHaveAttribute(
       'aria-current',
@@ -124,7 +154,7 @@ describe('ClothingList', () => {
 
   it('renders the generator list above the collection', async () => {
     mocks.loadArtifactRecords.mockResolvedValue([record('royal-robe')])
-    render(<ClothingList projectPath="/p" />)
+    renderList()
 
     expect(await screen.findByRole('button', { name: /Clothing/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Animation/ })).toBeDisabled()

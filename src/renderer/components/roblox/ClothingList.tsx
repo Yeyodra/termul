@@ -11,9 +11,15 @@
  */
 
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Layers } from '@/components/icons'
 import { type ArtifactRecord, currentVersion } from '@/lib/artifact-records'
-import { DEFAULT_ROBLOX_FEATURE, kindLabel, type RobloxFeature } from '@/lib/roblox-features'
+import {
+  DEFAULT_ROBLOX_FEATURE,
+  featurePath,
+  kindLabel,
+  type RobloxFeature
+} from '@/lib/roblox-features'
 import { cn } from '@/lib/utils'
 import {
   useProjectRecords,
@@ -87,6 +93,7 @@ export function ClothingList({
   const records = useProjectRecords(projectPath)
   const picked = usePickedSlug(projectPath)
   const load = useRobloxRecordsStore((state) => state.load)
+  const navigate = useNavigate()
   const [query, setQuery] = useState('')
   const [kind, setKind] = useState('all')
 
@@ -169,7 +176,13 @@ export function ClothingList({
                   projectPath={projectPath}
                   record={record}
                   active={record.slug === selected}
-                  onPick={(slug) => pickSlug(projectPath, slug)}
+                  onPick={(slug) => {
+                    pickSlug(projectPath, slug)
+                    // RobloxKit's row opens the item in the page, so the click
+                    // lands somewhere. Without this the pick only changed a
+                    // highlight in a panel the user was already looking at.
+                    navigate(featurePath(feature))
+                  }}
                 />
               ))}
             </ul>
