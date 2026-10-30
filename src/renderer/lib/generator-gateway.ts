@@ -17,17 +17,21 @@ import {
   resolveGeneratorAgent
 } from '@/lib/generator/agent-selection'
 import { createAskBrain, createBrainTakesImages } from '@/lib/generator/ask-brain'
+import { MODEL_3D_SYSTEM_PROMPT } from '@/lib/generator/engines/3d'
 import { CLOTHING_SYSTEM_PROMPT } from '@/lib/generator/engines/clothing'
 import { createGeneratorHandler } from '@/lib/generator/gateway-handler'
 import { TaskQueue } from '@/lib/generator/task-queue'
+import type { Model3DToolDeps } from '@/lib/generator/tools/generate-3d'
 import type { ClothingToolDeps } from '@/lib/generator/tools/generate-clothing'
 import type { Brain } from '@/lib/generator/types'
 
 export interface GeneratorGatewayOptions {
   /** Working directory for generator sessions: the active project. */
   cwd: string
-  /** The engine's system prompt. Defaults to the clothing prompt. */
+  /** The clothing engine's system prompt. Defaults to the clothing prompt. */
   system?: string
+  /** The 3D engine's system prompt. Defaults to the 3D prompt. */
+  model3dSystem?: string
   /** Defaults to a fresh `TaskQueue` with the ported budgets. */
   queue?: TaskQueue
   /** Overrides agent resolution (tests). */
@@ -72,11 +76,31 @@ export function startGeneratorGateway(
     system: options.system ?? CLOTHING_SYSTEM_PROMPT
   }
 
-  gateway.setHandler(createGeneratorHandler({ queue, clothing }))
+  // The 3D engine reuses the same queue, transport and agent resolution, and
+  // differs only in its system prompt: the harness is engine-agnostic, which is
+  // why nothing here is duplicated except the `system` field.
+  const model3d: Model3DToolDeps = {
+    queue,
+    brain: brainOf({ cwd: options.cwd }),
+    askBrain: createAskBrain({
+      transport: createAcpBrainTransport({
+        agentId: () => resolve({ cwd: options.cwd })?.id ?? null,
+        cwd: options.cwd
+      })
+    }),
+    brainTakesImages: createBrainTakesImages(
+      () => resolve({ cwd: options.cwd })?.takesImages ?? false
+    ),
+    agentFor: (task: { agentId?: string | null; sessionId?: string | null }) =>
+      resolve({ agentId: task.agentId, sessionId: task.sessionId, cwd: options.cwd })?.id ?? null,
+    system: options.model3dSystem ?? MODEL_3D_SYSTEM_PROMPT
+  }
+
+  gateway.setHandler(createGeneratorHandler({ queue, clothing, model3d }))
   // The page composer runs the same engine the agent's tool call would, so it
   // needs the same deps. Handing them out here is what keeps one task queue and
   // one system prompt for both entry points.
-  setPageGeneratorDeps({ queue, clothing })
+  setPageGeneratorDeps({ queue, clothing, model3d })
 
   return {
     stop: () => {
@@ -92,6 +116,7 @@ export function startGeneratorGateway(
 interface PageGeneratorDeps {
   queue: TaskQueue
   clothing: ClothingToolDeps
+  model3d: Model3DToolDeps
 }
 
 let pageGeneratorDeps: PageGeneratorDeps | null = null

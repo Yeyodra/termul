@@ -1,15 +1,20 @@
 /**
- * Runs the generator tools the host forwards, using the clothing engine that
- * is ported today.
+ * Runs the generator tools the host forwards, using the engines that are
+ * ported today: `clothing` and `3d`.
  *
- * Only `clothing` has an engine, so every other family answers with a clear
- * refusal instead of a broken promise: the tool list advertises them because
- * the guide names them, but a call must say what is missing rather than
- * silently returning an empty artifact.
+ * Every other family answers with a clear refusal instead of a broken promise:
+ * the tool list advertises them because the guide names them, but a call must
+ * say what is missing rather than silently returning an empty artifact.
  */
 
 import type { GeneratorCall, GeneratorReply } from '@/lib/acp-transport/generator-gateway-client'
 import type { TaskQueue } from '@/lib/generator/task-queue'
+import {
+  MODEL_3D_CATEGORIES,
+  type Model3DToolDeps,
+  queueGenerate3D,
+  readModelResult
+} from '@/lib/generator/tools/generate-3d'
 import {
   type ClothingToolDeps,
   queueGenerateClothing,
@@ -20,8 +25,6 @@ import { refreshLoadedProjects } from '@/stores/roblox-records-store'
 
 /** Which engine each tool family needs, for the refusal message. */
 const UNAVAILABLE = new Set([
-  'generate_3d',
-  'get_3d_task',
   'generate_sfx',
   'get_sfx_task',
   'generate_texture',
@@ -43,6 +46,7 @@ const UNAVAILABLE = new Set([
 export interface GeneratorHandlerDeps {
   queue: TaskQueue
   clothing: ClothingToolDeps
+  model3d: Model3DToolDeps
 }
 
 function parseArguments(text: string): Record<string, unknown> {
@@ -136,6 +140,65 @@ async function dispatch(deps: GeneratorHandlerDeps, call: GeneratorCall): Promis
       result
     }
   }
+
+  if (call.tool === 'generate_3d') {
+    const args = parseArguments(call.arguments)
+    const spec = args.spec as Record<string, unknown> | undefined
+    // The category is fixed by the tool call when given, so a spec cannot
+    // quietly change what is being made. A spec that carries its own category
+    // is accepted when the call does not name one.
+    const category =
+      typeof args.category === 'string'
+        ? args.category
+        : typeof spec?.category === 'string'
+          ? spec.category
+          : 'prop'
+
+    if (typeof category !== 'string' || !MODEL_3D_CATEGORIES.includes(category as never)) {
+      return {
+        callId: call.callId,
+        ok: false,
+        error:
+          'generate_3d needs `category` as one of ' +
+          `${MODEL_3D_CATEGORIES.join(', ')}. It is not read from inside \`spec\`.`
+      }
+    }
+
+    if (typeof args.prompt !== 'string' && !spec) {
+      return {
+        callId: call.callId,
+        ok: false,
+        error: 'generate_3d needs a `prompt` string, or a complete `spec` to fix.'
+      }
+    }
+
+    const accepted = queueGenerate3D(deps.model3d, {
+      prompt: typeof args.prompt === 'string' ? args.prompt : undefined,
+      category,
+      accessoryType: typeof args.accessoryType === 'string' ? args.accessoryType : undefined,
+      rig: typeof args.rig === 'string' ? args.rig : undefined,
+      spec,
+      recordSlug: typeof args.record_slug === 'string' ? args.record_slug : undefined,
+      agentId: call.agentId,
+      sessionId: call.sessionId
+    })
+    return { callId: call.callId, ok: true, result: accepted }
+  }
+
+  if (call.tool === 'get_3d_task') {
+    const args = parseArguments(call.arguments)
+    const taskId = args.task_id
+    if (typeof taskId !== 'string' || !taskId) {
+      return { callId: call.callId, ok: false, error: 'get_3d_task needs a task_id string' }
+    }
+    const result = readModelResult(deps.queue, taskId)
+    if (result.status === 'done' && result.image) {
+      useLiveArtifactStore.getState().show(call.sessionId, taskId, result.image)
+      refreshLoadedProjects()
+    }
+    return { callId: call.callId, ok: true, result }
+  }
+
   return {
     callId: call.callId,
     ok: false,
