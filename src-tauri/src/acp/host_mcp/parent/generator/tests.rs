@@ -716,3 +716,33 @@ fn a_version_keeps_the_whole_report_not_just_ok() {
     assert_eq!(first["report"]["triangles"], 1240);
     assert_eq!(first["report"]["size"][0], 4.3);
 }
+
+#[test]
+fn a_model_spec_is_kept_even_though_it_is_not_called_design() {
+    // A 3D engine names its authored document `spec`; a garment names it
+    // `design`. Reading only `design` wrote null for every model, so a stored
+    // model could not be rebuilt from its own record.
+    let mut fields = serde_json::Map::new();
+    fields.insert(
+        "spec".to_string(),
+        serde_json::json!({ "version": 1, "category": "prop", "parts": [] }),
+    );
+    fields.insert("kind".to_string(), serde_json::json!("prop"));
+
+    let version = version_fields(&fields);
+    assert_eq!(version["design"]["category"], "prop");
+    assert_eq!(version["kind"], "prop");
+}
+
+#[test]
+fn a_garment_design_still_wins_when_both_are_present() {
+    let mut fields = serde_json::Map::new();
+    fields.insert(
+        "design".to_string(),
+        serde_json::json!({ "type": "shirt", "layers": [] }),
+    );
+    fields.insert("spec".to_string(), serde_json::json!({ "ignored": true }));
+
+    let version = version_fields(&fields);
+    assert_eq!(version["design"]["type"], "shirt");
+}

@@ -407,9 +407,17 @@ fn version_fields(fields: &serde_json::Map<String, Value>) -> Value {
     // `Value::get` on a non-object yields None, so `ok` is read through the same
     // object check the report itself needs.
     let ok = report.get("ok").and_then(Value::as_bool);
+    // A garment engine names its authored document `design`; a 3D engine names
+    // the same thing `spec`. Reading only `design` wrote `null` for every model,
+    // so a stored model could not be rebuilt from its own record.
+    let authored = fields
+        .get("design")
+        .or_else(|| fields.get("spec"))
+        .cloned()
+        .unwrap_or(Value::Null);
     serde_json::json!({
         "prompt": text("prompt"),
-        "design": fields.get("design").cloned().unwrap_or(Value::Null),
+        "design": authored,
         "ok": ok,
         // The whole report, not just `ok`: a 3D version's checks are triangles,
         // size and the issue list, and the Inspector has nothing to show
