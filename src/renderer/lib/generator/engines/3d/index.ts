@@ -48,6 +48,7 @@ export {
   textureDetailIssues,
   validateAccessory
 } from './check'
+export { DOG_EXAMPLE, R15_HERO_EXAMPLE } from './examples'
 export {
   EXPR_FUNCTION_NAMES,
   EXPR_FUNCTIONS,
@@ -56,6 +57,13 @@ export {
   numbersOr,
   type ParamValues
 } from './expr'
+export {
+  CATEGORY_GUIDES,
+  categoryGuide,
+  firstMessage,
+  MODEL_3D_SYSTEM_PROMPT,
+  rigGuide
+} from './prompt'
 export {
   ACCESSORY_TYPES,
   BOOLEAN_OPS,
