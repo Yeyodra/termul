@@ -29,6 +29,16 @@ export interface RecordVersion {
   atlas: string
   /** Review-sheet file name inside the record directory, e.g. `v2.still.png`. */
   still?: string
+  /**
+   * Model file name inside the record directory, e.g. `v1.glb`.
+   *
+   * A 3D version stores its GLB rather than re-building it from `design`, for
+   * the same reason a clothing version stores its atlas: the viewport reads the
+   * file, so storing only the spec would make a version unviewable until it was
+   * rebuilt. For a 3D version `atlas` points at the GLB too, so older readers
+   * that only know `atlas` still find something to show.
+   */
+  model?: string
 }
 
 export interface ArtifactRecord {
@@ -69,7 +79,10 @@ function parseVersion(raw: unknown): RecordVersion | null {
   if (!raw || typeof raw !== 'object') return null
   const fields = raw as Record<string, unknown>
   const n = asNumber(fields.n)
-  const atlas = typeof fields.atlas === 'string' ? fields.atlas : undefined
+  const model = typeof fields.model === 'string' ? fields.model : undefined
+  // A 3D version has no atlas PNG; its `atlas` field holds the GLB name, so a
+  // version with `model` is valid even when `atlas` is absent.
+  const atlas = typeof fields.atlas === 'string' ? fields.atlas : model
   if (n === undefined || !atlas) return null
   return {
     n,
@@ -78,7 +91,8 @@ function parseVersion(raw: unknown): RecordVersion | null {
     ok: typeof fields.ok === 'boolean' ? fields.ok : undefined,
     design: fields.design,
     atlas,
-    still: typeof fields.still === 'string' ? fields.still : undefined
+    still: typeof fields.still === 'string' ? fields.still : undefined,
+    model
   }
 }
 
@@ -280,12 +294,12 @@ export async function loadArtifactRecords(
     .slice(0, limit)
 }
 
-function toDataUrl(bytes: Uint8Array): string {
+function toDataUrl(bytes: Uint8Array, mime = 'image/png'): string {
   let binary = ''
   for (let i = 0; i < bytes.length; i += 0x8000) {
     binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
   }
-  return `data:image/png;base64,${btoa(binary)}`
+  return `data:${mime};base64,${btoa(binary)}`
 }
 
 /**
@@ -315,6 +329,44 @@ export async function readStillDataUrl(
   } catch {
     return null
   }
+}
+
+/**
+ * The version's model as a `data:` URL, or `null` when the file is gone.
+ *
+ * A GLB goes in as `model/gltf-binary`, which is what the viewport's
+ * `MeshArtifact` fetches; the other formats keep their own media type so the
+ * same helper serves an OBJ or an STL export too.
+ */
+export async function readModelDataUrl(
+  record: ArtifactRecord,
+  version: RecordVersion
+): Promise<string | null> {
+  const file = version.model ?? version.atlas
+  if (!file) return null
+  try {
+    return toDataUrl(await readAttachmentBytes(joinPath(record.dir, file)), modelMimeType(file))
+  } catch {
+    return null
+  }
+}
+
+/** The media type a model file needs in its `data:` URL. */
+export function modelMimeType(file: string): string {
+  const extension = file.toLowerCase().split('.').pop() ?? ''
+  if (extension === 'glb') return 'model/gltf-binary'
+  if (extension === 'gltf') return 'model/gltf+json'
+  if (extension === 'obj') return 'text/plain'
+  if (extension === 'stl') return 'model/stl'
+  return 'application/octet-stream'
+}
+
+/** The mesh format a model file name implies, for `MeshArtifact.format`. */
+export function modelFormat(file: string): 'glb' | 'obj' | 'stl' {
+  const extension = file.toLowerCase().split('.').pop() ?? ''
+  if (extension === 'glb' || extension === 'gltf') return 'glb'
+  if (extension === 'stl') return 'stl'
+  return 'obj'
 }
 
 /**

@@ -132,9 +132,16 @@ impl HostPlanServer {
     ) -> Option<Value> {
         let mut result = result?;
         let fields = result.as_object_mut()?;
+        // A 3D engine reports its artifact in `model`; clothing reports an
+        // `atlas`. Both are written through the same path, so whichever is
+        // present becomes this version's main file.
+        let model = fields
+            .get("model")
+            .and_then(|value| value.as_str().map(str::to_string));
         let atlas = fields
             .remove("atlas")
-            .and_then(|value| value.as_str().map(str::to_string));
+            .and_then(|value| value.as_str().map(str::to_string))
+            .or_else(|| model.clone());
         let Some(atlas) = atlas else {
             return Some(result);
         };
@@ -150,6 +157,7 @@ impl HostPlanServer {
             return Some(result);
         };
         let record_dir = garment_dir(fields);
+        let extension = artifact_extension(fields);
         let bytes = match decode_data_url(&atlas) {
             Ok(bytes) => bytes,
             Err(reason) => {
@@ -168,7 +176,7 @@ impl HostPlanServer {
         let root = scope.root.clone();
         let requested = record_dir.clone();
         let written = tokio::task::spawn_blocking(move || {
-            write_record(&root, &requested, &bytes, still.as_deref(), version)
+            write_record(&root, &requested, &bytes, still.as_deref(), version, extension)
         })
         .await;
         let kind = fields
@@ -320,6 +328,25 @@ fn garment_dir(fields: &serde_json::Map<String, Value>) -> String {
     )
 }
 
+/// The file extension a record's main artifact gets.
+///
+/// A 3D engine reports its model in `model` as a `data:` URL whose media type
+/// names the format; anything else (clothing, and every engine that predates
+/// 3D) writes a PNG atlas. Defaulting to `png` keeps the clothing path
+/// byte-identical to what it wrote before this parameter existed.
+fn artifact_extension(fields: &serde_json::Map<String, Value>) -> &'static str {
+    let model = fields.get("model").and_then(Value::as_str).unwrap_or("");
+    if model.starts_with("data:model/gltf-binary") {
+        "glb"
+    } else if model.starts_with("data:model/gltf+json") {
+        "gltf"
+    } else if model.starts_with("data:model/stl") {
+        "stl"
+    } else {
+        "png"
+    }
+}
+
 /// What a save wrote, in the shape both callers report.
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -362,8 +389,9 @@ pub fn save_artifact_result(
         .and_then(|url| decode_data_url(url).ok());
     let version = version_fields(fields);
     let record_dir = garment_dir(fields);
+    let extension = artifact_extension(fields);
 
-    let saved = write_record(root, &record_dir, &bytes, still.as_deref(), version)?;
+    let saved = write_record(root, &record_dir, &bytes, still.as_deref(), version, extension)?;
     Ok(SavedArtifact {
         slug: saved.slug,
         version: saved.version,
@@ -400,12 +428,19 @@ struct SavedRecord {
 /// its still beside it. The read-modify-write of the record happens under one
 /// blocking call so two generations of the same slug cannot both read the same
 /// `max(n)` and write the same `v<n>.png`.
+///
+/// `extension` names the main artifact's file type: `png` for a clothing atlas,
+/// `glb` for a 3D model. A 3D version also records `model` alongside `atlas`,
+/// both pointing at the same file, so a reader that only knows `atlas` still
+/// finds something to show and a reader that knows `model` does not have to
+/// guess from the extension.
 fn write_record(
     root: &std::path::Path,
     record_dir: &str,
     atlas: &[u8],
     still: Option<&[u8]>,
     version: Value,
+    extension: &str,
 ) -> Result<SavedRecord, String> {
     use crate::acp::host_mcp::canvas_policy::write_project_file;
 
@@ -424,7 +459,7 @@ fn write_record(
         .unwrap_or(0)
         + 1;
 
-    let atlas_name = format!("v{n}.png");
+    let atlas_name = format!("v{n}.{extension}");
     let atlas_relative = format!("{record_dir}/{atlas_name}");
     let atlas_file = write_project_file(root, &atlas_relative, atlas).map_err(|error| error.message)?;
 
@@ -446,8 +481,11 @@ fn write_record(
     if let Some(fields) = version.as_object_mut() {
         fields.insert("n".to_string(), serde_json::json!(n));
         fields.insert("at".to_string(), serde_json::json!(now));
-        fields.insert("atlas".to_string(), Value::String(atlas_name));
+        fields.insert("atlas".to_string(), Value::String(atlas_name.clone()));
         fields.insert("still".to_string(), still_name);
+        if extension != "png" {
+            fields.insert("model".to_string(), Value::String(atlas_name));
+        }
     }
 
     let slug = record_dir
@@ -540,12 +578,13 @@ fn decode_data_url(url: &str) -> Result<Vec<u8>, String> {
     let (head, body) = url
         .split_once(',')
         .ok_or_else(|| "the picture is not a data URL".to_string())?;
-    if !head.starts_with("data:image/") {
-        return Err("the picture is not an image data URL".to_string());
+    // A 3D model arrives as `data:model/...`; every other artifact is an image.
+    if !head.starts_with("data:image/") && !head.starts_with("data:model/") {
+        return Err("the artifact is not an image or model data URL".to_string());
     }
     base64::engine::general_purpose::STANDARD
         .decode(body)
-        .map_err(|error| format!("the picture is not valid base64: {error}"))
+        .map_err(|error| format!("the artifact is not valid base64: {error}"))
 }
 
 #[cfg(test)]

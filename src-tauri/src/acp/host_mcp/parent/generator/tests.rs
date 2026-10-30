@@ -154,6 +154,93 @@ fn a_data_url_that_is_not_an_image_is_refused() {
 }
 
 #[test]
+fn a_glb_data_url_decodes_to_its_bytes() {
+    use base64::Engine as _;
+    let glb = b"glTF\x02\x00\x00\x00not really";
+    let encoded = base64::engine::general_purpose::STANDARD.encode(glb);
+    let url = format!("data:model/gltf-binary;base64,{encoded}");
+    assert_eq!(decode_data_url(&url).unwrap(), glb);
+}
+
+#[test]
+fn a_model_extension_is_taken_from_the_data_url_media_type() {
+    let fields = |model: &str| {
+        let mut map = serde_json::Map::new();
+        map.insert("model".to_string(), serde_json::json!(model));
+        map
+    };
+
+    assert_eq!(
+        artifact_extension(&fields("data:model/gltf-binary;base64,AAAA")),
+        "glb"
+    );
+    assert_eq!(
+        artifact_extension(&fields("data:model/gltf+json;base64,AAAA")),
+        "gltf"
+    );
+    assert_eq!(
+        artifact_extension(&fields("data:model/stl;base64,AAAA")),
+        "stl"
+    );
+}
+
+#[test]
+fn an_artifact_with_no_model_is_a_png() {
+    let mut fields = serde_json::Map::new();
+    fields.insert(
+        "atlas".to_string(),
+        serde_json::json!("data:image/png;base64,AAAA"),
+    );
+    assert_eq!(artifact_extension(&fields), "png");
+}
+
+#[test]
+fn a_3d_version_records_both_model_and_atlas() {
+    let dir = tempfile::tempdir().unwrap();
+    let version = serde_json::json!({ "prompt": "a crate", "ok": true });
+    let saved = write_record(
+        dir.path(),
+        ".termul/generated/3d/crate",
+        b"glTF\x02\x00\x00\x00",
+        None,
+        version,
+        "glb",
+    )
+    .unwrap();
+
+    assert!(saved.atlas_relative.ends_with("v1.glb"), "{}", saved.atlas_relative);
+
+    let item = std::fs::read_to_string(&saved.item_absolute).unwrap();
+    let record: serde_json::Value = serde_json::from_str(&item).unwrap();
+    let first = &record["versions"][0];
+    assert_eq!(first["atlas"], "v1.glb");
+    assert_eq!(first["model"], "v1.glb");
+}
+
+#[test]
+fn a_clothing_version_keeps_its_png_name_and_no_model_field() {
+    let dir = tempfile::tempdir().unwrap();
+    let version = serde_json::json!({ "prompt": "a shirt", "ok": true });
+    let saved = write_record(
+        dir.path(),
+        ".termul/generated/clothing/shirt",
+        b"\x89PNG\r\n\x1a\n",
+        None,
+        version,
+        "png",
+    )
+    .unwrap();
+
+    assert!(saved.atlas_relative.ends_with("v1.png"), "{}", saved.atlas_relative);
+
+    let item = std::fs::read_to_string(&saved.item_absolute).unwrap();
+    let record: serde_json::Value = serde_json::from_str(&item).unwrap();
+    let first = &record["versions"][0];
+    assert_eq!(first["atlas"], "v1.png");
+    assert!(first.get("model").is_none(), "{first}");
+}
+
+#[test]
 fn a_data_url_with_no_comma_is_refused() {
     let error = decode_data_url("data:image/png;base64").unwrap_err();
     assert!(error.contains("not a data URL"), "{error}");

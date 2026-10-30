@@ -22,11 +22,36 @@ const ATTACHMENT_IMAGE_EXTENSIONS: &[&str] = &[
     "png", "jpg", "jpeg", "gif", "webp", "bmp", "avif", "svg", "ico",
 ];
 
+/// Model extensions the 3D generator's viewport may read by path.
+///
+/// A generated GLB is not an image, but it takes the same brokered path: it is
+/// read as bytes and handed to the renderer as a `data:` URL, exactly as a
+/// clothing atlas is. Kept as a separate list so the image surface stays
+/// exactly as narrow as it was.
+const ATTACHMENT_MODEL_EXTENSIONS: &[&str] = &["glb", "gltf", "obj", "stl", "mtl"];
+
+/// Maximum model size the renderer may read. A textured GLB with a 1024²
+/// palette carries a PNG in its binary chunk, so the 10 MB image cap is too
+/// tight; 64 MB leaves room for a dense multi-part model without allowing an
+/// unbounded read.
+const ATTACHMENT_MAX_MODEL_BYTES: u64 = 64 * 1024 * 1024;
+
 fn attachment_is_image_extension(path: &Path) -> bool {
     path.extension()
         .and_then(|ext| ext.to_str())
         .map(|ext| {
             ATTACHMENT_IMAGE_EXTENSIONS
+                .iter()
+                .any(|allowed| allowed.eq_ignore_ascii_case(ext))
+        })
+        .unwrap_or(false)
+}
+
+fn attachment_is_model_extension(path: &Path) -> bool {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| {
+            ATTACHMENT_MODEL_EXTENSIONS
                 .iter()
                 .any(|allowed| allowed.eq_ignore_ascii_case(ext))
         })
@@ -39,8 +64,15 @@ fn attachment_is_image_extension(path: &Path) -> bool {
 ///
 /// Returns the raw bytes via `Response::new`, which arrives on the JS side as
 /// an `ArrayBuffer`. Rejects (throws on JS) when the path is not absolute,
-/// does not exist, is not a regular file, exceeds the size cap, or is not an
-/// image — callers fall back to a file-icon preview on rejection.
+/// does not exist, is not a regular file, exceeds the size cap, or is neither
+/// an image nor a model — callers fall back to a file-icon preview on
+/// rejection.
+///
+/// A model file takes this same path rather than a second command: the
+/// validation, the absolute-path requirement and the size cap are identical,
+/// and one brokered binary read is a smaller surface than two. The model
+/// extensions get their own, larger cap because a GLB carries a PNG palette in
+/// its binary chunk.
 #[tauri::command]
 pub fn read_attachment_bytes(path: String) -> Result<Response, String> {
     let stripped = path_validation::strip_verbatim_prefix(&path);
@@ -54,9 +86,23 @@ pub fn read_attachment_bytes(path: String) -> Result<Response, String> {
         .canonicalize()
         .map_err(|e| format!("Invalid or inaccessible attachment path: {}", e))?;
 
-    if !attachment_is_image_extension(&canonical) {
-        return Err("Attachment path is not an image".to_string());
+    let is_image = attachment_is_image_extension(&canonical);
+    let is_model = attachment_is_model_extension(&canonical);
+    if !is_image && !is_model {
+        return Err("Attachment path is not an image or a model".to_string());
     }
+
+    let (limit, limit_message) = if is_model {
+        (
+            ATTACHMENT_MAX_MODEL_BYTES,
+            "Attachment model exceeds the 64 MB limit",
+        )
+    } else {
+        (
+            ATTACHMENT_MAX_IMAGE_BYTES,
+            "Attachment image exceeds the 10 MB limit",
+        )
+    };
 
     let mut file =
         std::fs::File::open(&canonical).map_err(|e| format!("Failed to open attachment: {}", e))?;
@@ -66,15 +112,15 @@ pub fn read_attachment_bytes(path: String) -> Result<Response, String> {
     if !metadata.is_file() {
         return Err("Attachment path is not a regular file".to_string());
     }
-    if metadata.len() > ATTACHMENT_MAX_IMAGE_BYTES {
-        return Err("Attachment image exceeds the 10 MB limit".to_string());
+    if metadata.len() > limit {
+        return Err(limit_message.to_string());
     }
 
     let mut bytes = Vec::with_capacity(metadata.len() as usize);
     file.read_to_end(&mut bytes)
         .map_err(|e| format!("Failed to read attachment: {}", e))?;
-    if bytes.len() as u64 > ATTACHMENT_MAX_IMAGE_BYTES {
-        return Err("Attachment image exceeds the 10 MB limit".to_string());
+    if bytes.len() as u64 > limit {
+        return Err(limit_message.to_string());
     }
     Ok(Response::new(bytes))
 }

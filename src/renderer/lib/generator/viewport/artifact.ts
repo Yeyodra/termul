@@ -21,6 +21,7 @@ import {
   MeshStandardMaterial,
   PlaneGeometry
 } from 'three'
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { OBJLoader } from 'three/addons/loaders/OBJLoader.js'
 import { STLLoader } from 'three/addons/loaders/STLLoader.js'
 import { buildAvatar, type GarmentTextures } from '../engines/clothing/avatar/avatar'
@@ -62,7 +63,12 @@ export interface OutfitArtifact {
 /** A generated model, already serialised to a mesh format. */
 export interface MeshArtifact {
   kind: 'mesh'
-  format: 'obj' | 'stl'
+  /**
+   * `glb` is binary and arrives as a `data:model/gltf-binary;base64,…` URL;
+   * `obj` and `stl` are text and arrive as `data:` or `blob:` URLs. Adding it
+   * is additive — the obj and stl paths are unchanged.
+   */
+  format: 'obj' | 'stl' | 'glb'
   /** URL or data URL of the mesh. */
   url: string
   name?: string
@@ -132,16 +138,15 @@ function outfitLabel(worn: DesignType[], primary: DesignType): string {
   return `${ordered.join(' + ')} on the avatar`
 }
 
-/** Meshes arrive as text; the loaders return a group the viewport can frame. */
+/**
+ * Meshes arrive as a URL; the loaders return a group the viewport can frame.
+ *
+ * GLB is binary, so it is fetched as an `ArrayBuffer` and parsed by
+ * `GLTFLoader`; OBJ and STL are text and keep their existing path. The GLB
+ * branch is additive — nothing about the other two changed.
+ */
 async function buildMesh(artifact: MeshArtifact): Promise<ArtifactScene> {
-  const source = await fetch(artifact.url).then((response) => {
-    if (!response.ok) throw new Error(`the model did not download (${response.status})`)
-    return response.text()
-  })
-  const loaded =
-    artifact.format === 'stl'
-      ? new Group().add(new Mesh(new STLLoader().parse(source), new MeshStandardMaterial()))
-      : new OBJLoader().parse(source)
+  const loaded = await loadMeshGroup(artifact)
 
   const group = new Group()
   for (const child of [...loaded.children]) group.add(child)
@@ -155,11 +160,35 @@ async function buildMesh(artifact: MeshArtifact): Promise<ArtifactScene> {
       group.traverse((child) => {
         const mesh = child as Mesh
         mesh.geometry?.dispose()
+        const material = mesh.material as MeshStandardMaterial | undefined
+        material?.map?.dispose()
       })
       for (const material of materials) material.dispose()
     },
     label: artifact.name?.trim() || `the generated ${artifact.format.toUpperCase()} model`
   }
+}
+
+/** Parse one mesh artifact into a `Group`, per format. */
+async function loadMeshGroup(artifact: MeshArtifact): Promise<Group> {
+  if (artifact.format === 'glb') {
+    const buffer = await fetch(artifact.url).then(async (response) => {
+      if (!response.ok) throw new Error(`the model did not download (${response.status})`)
+      return response.arrayBuffer()
+    })
+    const gltf = await new GLTFLoader().parseAsync(buffer, '')
+    return gltf.scene as unknown as Group
+  }
+
+  const source = await fetch(artifact.url).then((response) => {
+    if (!response.ok) throw new Error(`the model did not download (${response.status})`)
+    return response.text()
+  })
+
+  if (artifact.format === 'stl') {
+    return new Group().add(new Mesh(new STLLoader().parse(source), new MeshStandardMaterial()))
+  }
+  return new OBJLoader().parse(source)
 }
 
 /** The skybox is drawn on the inside of a box, so it is unlit and double-sided. */
