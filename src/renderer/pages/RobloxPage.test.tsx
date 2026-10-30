@@ -68,6 +68,7 @@ describe('RobloxPage', () => {
       loaded: {},
       atlases: {},
       stills: {},
+      models: {},
       reading: {}
     })
     useRobloxSelectionStore.setState({ pickedByProject: {} })

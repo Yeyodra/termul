@@ -48,6 +48,16 @@ export function featureLabel(feature: RobloxFeature): string {
 }
 
 /**
+ * Whether this build can actually generate `feature`.
+ *
+ * The page reads this rather than comparing against a feature name, so adding
+ * an engine is one flag flip instead of a second hardcoded branch.
+ */
+export function featureReady(feature: RobloxFeature): boolean {
+  return ROBLOX_FEATURES.find((entry) => entry.id === feature)?.ready ?? false
+}
+
+/**
  * How a garment kind is written in the UI.
  *
  * `record.kind` is the raw `item.json` value (`shirt`, `pants`, `tshirt`), so it

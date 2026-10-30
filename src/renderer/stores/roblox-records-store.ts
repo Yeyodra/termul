@@ -17,6 +17,7 @@ import {
   currentVersion,
   loadArtifactRecords,
   readAtlasDataUrl,
+  readModelDataUrl,
   readStillDataUrl
 } from '@/lib/artifact-records'
 
@@ -37,6 +38,15 @@ interface RobloxRecordsState {
   atlases: Record<string, string>
   /** `<project>|<slug>@<n>` -> review-sheet data URL. */
   stills: Record<string, string>
+  /**
+   * `<project>|<slug>@<n>` -> model data URL, for a 3D record.
+   *
+   * Kept apart from `atlases` because the media type differs: a GLB arrives as
+   * `model/gltf-binary` and must not be handed to an image decoder. Only a
+   * version that actually has a model file lands here, so a clothing record
+   * leaves this empty and nothing downstream has to branch on kind.
+   */
+  models: Record<string, string>
   /** Project paths with a read in flight, so a re-render cannot start a second. */
   reading: Record<string, boolean>
   load: (projectPath: string) => Promise<void>
@@ -47,7 +57,7 @@ interface RobloxRecordsState {
 export const useRobloxRecordsStore = create<RobloxRecordsState>((set, get) => {
   /** Read every picture a record still needs, then store what came back. */
   const readPictures = async (projectPath: string, records: ArtifactRecord[]): Promise<void> => {
-    const { atlases, stills } = get()
+    const { atlases, stills, models } = get()
     const wanted = records.map((record) => {
       const version = currentVersion(record)
       return { record, version, key: pictureKey(projectPath, record.slug, version.n) }
@@ -55,20 +65,28 @@ export const useRobloxRecordsStore = create<RobloxRecordsState>((set, get) => {
 
     const results = await Promise.all(
       wanted.map(async ({ record, version, key }) => {
-        const atlas = atlases[key] ?? (await readAtlasDataUrl(record, version)) ?? undefined
+        const isModel = Boolean(version.model)
+        const model = isModel
+          ? (models[key] ?? (await readModelDataUrl(record, version)) ?? undefined)
+          : undefined
+        const atlas = isModel
+          ? undefined
+          : (atlases[key] ?? (await readAtlasDataUrl(record, version)) ?? undefined)
         const still = stills[key] ?? (await readStillDataUrl(record, version)) ?? undefined
-        return { key, atlas, still }
+        return { key, atlas, still, model }
       })
     )
 
     set((state) => {
       const nextAtlases = { ...state.atlases }
       const nextStills = { ...state.stills }
-      for (const { key, atlas, still } of results) {
+      const nextModels = { ...state.models }
+      for (const { key, atlas, still, model } of results) {
         if (atlas) nextAtlases[key] = atlas
         if (still) nextStills[key] = still
+        if (model) nextModels[key] = model
       }
-      return { atlases: nextAtlases, stills: nextStills }
+      return { atlases: nextAtlases, stills: nextStills, models: nextModels }
     })
   }
 
@@ -123,6 +141,7 @@ export const useRobloxRecordsStore = create<RobloxRecordsState>((set, get) => {
     loaded: {},
     atlases: {},
     stills: {},
+    models: {},
     reading: {},
     load: (projectPath) => {
       if (!projectPath) return Promise.resolve()
@@ -158,6 +177,17 @@ export function useProjectRecords(projectPath: string | undefined): ArtifactReco
   return useRobloxRecordsStore((state) =>
     projectPath ? state.recordsByProject[projectPath] : undefined
   )
+}
+
+/** The model of a record's current version, once it is read. */
+export function useRecordModel(
+  projectPath: string | undefined,
+  record: ArtifactRecord | null
+): string | undefined {
+  return useRobloxRecordsStore((state) => {
+    if (!projectPath || !record) return undefined
+    return state.models[pictureKey(projectPath, record.slug, currentVersion(record).n)]
+  })
 }
 
 /**
