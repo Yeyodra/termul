@@ -38,6 +38,22 @@ export interface RobloxPlaceKey {
   created: boolean
 }
 
+/** Whether an Open Cloud key is stored, without revealing it. */
+export interface OpenCloudStatus {
+  configured: boolean
+  /** Why it is not configured, when the reason is not simply "nothing saved". */
+  reason: string | null
+}
+
+/** What an Open Cloud upload produced. */
+export interface OpenCloudUpload {
+  assetId: number
+  /** The insert script's own reply. */
+  message: string
+  /** Present when the upload worked but the insert did not. */
+  recovery: string | null
+}
+
 const NOT_AVAILABLE: RobloxStudioStatus = { found: false, exePath: null }
 
 /**
@@ -66,6 +82,17 @@ export function createRobloxApi(): {
   workspacePath: () => Promise<IpcResult<string | null>>
   liveStatus: () => Promise<IpcResult<RobloxStudioLiveStatus>>
   placeKey: () => Promise<IpcResult<RobloxPlaceKey>>
+  openCloudStatus: () => Promise<IpcResult<OpenCloudStatus>>
+  saveOpenCloudKey: (key: string) => Promise<IpcResult<OpenCloudStatus>>
+  clearOpenCloudKey: () => Promise<IpcResult<OpenCloudStatus>>
+  uploadModel: (request: {
+    glbBase64: string
+    name: string
+    description?: string
+    userId: string
+    studioId: string
+    luau: string
+  }) => Promise<IpcResult<OpenCloudUpload>>
 } {
   return {
     studioPath: async () => {
@@ -91,6 +118,48 @@ export function createRobloxApi(): {
         return { success: true, data: ROBLOX_PLACE_KEY_UNAVAILABLE }
       }
       return invokeIpcWrapped<RobloxPlaceKey>('roblox_place_key')
+    },
+    // The key lives in the OS keychain on the host, so every one of these is
+    // desktop-only. Off-desktop the answer is "not configured" rather than an
+    // error: there is nothing the renderer could do with one anyway.
+    openCloudStatus: async () => {
+      if (!isTauriContext()) {
+        return { success: true, data: { configured: false, reason: null } }
+      }
+      return invokeIpcWrapped<OpenCloudStatus>('roblox_opencloud_status')
+    },
+    saveOpenCloudKey: async (key: string) => {
+      if (!isTauriContext()) {
+        return {
+          success: false,
+          error: 'An Open Cloud key can only be saved in the desktop app.',
+          code: 'DESKTOP_ONLY'
+        }
+      }
+      return invokeIpcWrapped<OpenCloudStatus>('roblox_opencloud_save_key', { key })
+    },
+    clearOpenCloudKey: async () => {
+      if (!isTauriContext()) {
+        return { success: true, data: { configured: false, reason: null } }
+      }
+      return invokeIpcWrapped<OpenCloudStatus>('roblox_opencloud_clear_key')
+    },
+    uploadModel: async (request) => {
+      if (!isTauriContext()) {
+        return {
+          success: false,
+          error: 'Uploading a model needs the desktop app.',
+          code: 'DESKTOP_ONLY'
+        }
+      }
+      return invokeIpcWrapped<OpenCloudUpload>('roblox_upload_model', {
+        glbBase64: request.glbBase64,
+        name: request.name,
+        description: request.description,
+        userId: request.userId,
+        studioId: request.studioId,
+        luau: request.luau
+      })
     }
   }
 }

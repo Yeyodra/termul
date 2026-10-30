@@ -86,6 +86,7 @@ pub mod misc;
 pub mod notification;
 pub mod project_icon;
 pub mod roblox_artifact;
+pub mod roblox_opencloud;
 pub mod remote;
 pub mod search;
 pub(crate) mod search_dirs;
