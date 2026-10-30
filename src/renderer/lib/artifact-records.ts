@@ -30,6 +30,15 @@ export interface RecordVersion {
   /** Review-sheet file name inside the record directory, e.g. `v2.still.png`. */
   still?: string
   /**
+   * The generator family the host wrote beside this version.
+   *
+   * `shirt` / `pants` / `tshirt` for a garment, or `prop` / `building` / `tool` /
+   * `character` / … for a model. The host writes it on the version, not on the
+   * record, which is why a reader that only looks at the record cannot tell a
+   * model from a garment.
+   */
+  kind?: string
+  /**
    * Model file name inside the record directory, e.g. `v1.glb`.
    *
    * A 3D version stores its GLB rather than re-building it from `design`, for
@@ -92,6 +101,7 @@ function parseVersion(raw: unknown): RecordVersion | null {
     design: fields.design,
     atlas,
     still: typeof fields.still === 'string' ? fields.still : undefined,
+    kind: typeof fields.kind === 'string' ? fields.kind : undefined,
     model
   }
 }
@@ -115,15 +125,30 @@ function kindOf(fields: Record<string, unknown>, versions: RecordVersion[]): str
     const type = (version?.design as { type?: unknown } | undefined)?.type
     return typeof type === 'string' ? type : undefined
   }
+  const kindOfVersion = (version: RecordVersion | undefined): string | undefined => {
+    const kind = version?.kind
+    return typeof kind === 'string' && kind ? kind : undefined
+  }
 
   const declared = typeof fields.current === 'number' ? fields.current : undefined
   const current =
     declared !== undefined ? versions.find((version) => version.n === declared) : undefined
+
   const fromCurrent = typeOf(current)
   if (fromCurrent) return fromCurrent
 
+  // A 3D version has no `design.type`; its kind is the generator family the
+  // host wrote beside the file (`prop`, `building`, …). The host puts it on the
+  // VERSION, not on the record, so reading it from the top level always missed
+  // and every model was reported as clothing.
+  const kindFromCurrent = kindOfVersion(current)
+  if (kindFromCurrent) return kindFromCurrent
+
   const fromAny = versions.map(typeOf).find((type): type is string => type !== undefined)
   if (fromAny) return fromAny
+
+  const kindFromAny = versions.map(kindOfVersion).find((kind): kind is string => kind !== undefined)
+  if (kindFromAny) return kindFromAny
 
   return typeof fields.kind === 'string' ? fields.kind : 'clothing'
 }

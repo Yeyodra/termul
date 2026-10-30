@@ -104,6 +104,53 @@ describe('parseRecord', () => {
     expect(record!.kind).toBe('clothing')
   })
 
+  it('reads a 3D record kind from the version, which is where the host writes it', () => {
+    // The real shape: no root `kind`, and the family sits on the version beside
+    // the file. Reading it from the root missed, so every model was reported as
+    // clothing and the panel said "treasure-chest clothing · v1".
+    const record = parseRecord(
+      JSON.stringify({
+        schema: 1,
+        slug: 'treasure-chest',
+        current: 1,
+        updatedAt: 2,
+        createdAt: 1,
+        versions: [
+          {
+            prompt: null,
+            design: null,
+            ok: true,
+            name: 'Treasure chest',
+            kind: 'prop',
+            n: 1,
+            at: 1,
+            atlas: 'v1.glb',
+            still: 'v1.still.png',
+            model: 'v1.glb'
+          }
+        ]
+      }),
+      '/p/.termul/generated/prop/treasure-chest'
+    )
+
+    expect(record).not.toBeNull()
+    expect(record!.kind).toBe('prop')
+    expect(record!.versions[0].model).toBe('v1.glb')
+  })
+
+  it('prefers a garment design type over a version kind', () => {
+    // A garment version carries both `kind` (the folder) and `design.type` (the
+    // garment), and the garment is what a row should say.
+    const record = parseRecord(
+      recordText({
+        kind: undefined,
+        versions: [{ n: 1, at: 1, kind: 'clothing', design: { type: 'tshirt' }, atlas: 'v1.png' }]
+      }),
+      '/p/x'
+    )
+    expect(record!.kind).toBe('tshirt')
+  })
+
   it('reads the kind from the current version, not the oldest one', () => {
     // A record whose versions disagree is what an earlier bug produced: revising
     // with the picker's kind wrote a pants design into a shirt record. Reading the
