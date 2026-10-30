@@ -38,6 +38,8 @@ export interface RecordVersion {
    * model from a garment.
    */
   kind?: string
+  /** What the checks found: ok, 	riangles, size, issues. */
+  report?: unknown
   /**
    * Model file name inside the record directory, e.g. `v1.glb`.
    *
@@ -102,6 +104,7 @@ function parseVersion(raw: unknown): RecordVersion | null {
     atlas,
     still: typeof fields.still === 'string' ? fields.still : undefined,
     kind: typeof fields.kind === 'string' ? fields.kind : undefined,
+    report: fields.report,
     model
   }
 }

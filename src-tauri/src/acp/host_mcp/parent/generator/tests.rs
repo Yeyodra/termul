@@ -679,3 +679,40 @@ fn a_save_without_a_record_slug_creates_a_new_record() {
         .join(".termul/generated/shirt/blue-jeans/item.json")
         .exists());
 }
+
+#[test]
+fn a_version_keeps_the_whole_report_not_just_ok() {
+    let dir = tempfile::tempdir().unwrap();
+    // `write_record` stores what it is given, so the version is built the way the
+    // save path builds it: through `version_fields`, which is what lifts `ok` out
+    // of the report and keeps the report whole beside it.
+    let mut fields = serde_json::Map::new();
+    fields.insert("prompt".to_string(), serde_json::json!("a crate"));
+    fields.insert(
+        "report".to_string(),
+        serde_json::json!({
+            "ok": true,
+            "triangles": 1240,
+            "size": [4.3, 2.1, 2.8],
+            "issues": []
+        }),
+    );
+    let version = version_fields(&fields);
+    let saved = write_record(
+        dir.path(),
+        ".termul/generated/prop/crate",
+        b"glTF\x02\x00\x00\x00",
+        None,
+        version,
+        "glb",
+    )
+    .unwrap();
+
+    let item = std::fs::read_to_string(&saved.item_absolute).unwrap();
+    let record: serde_json::Value = serde_json::from_str(&item).unwrap();
+    let first = &record["versions"][0];
+
+    assert_eq!(first["ok"], true);
+    assert_eq!(first["report"]["triangles"], 1240);
+    assert_eq!(first["report"]["size"][0], 4.3);
+}

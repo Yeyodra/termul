@@ -50,6 +50,8 @@ const VALUE_CLASS = 'text-[10.5px] font-medium tabular-nums'
 function Checks({ version, paint }: { version: RecordVersion; paint: PaintReport | null }) {
   const facts = useMemo(() => versionFacts(version), [version])
 
+  if (isModelVersion(version)) return <ModelChecks version={version} />
+
   return (
     <div>
       <div className="mb-2 flex items-center justify-between">
@@ -306,14 +308,91 @@ export function exportName(record: ArtifactRecord): string {
 /** The extensions a 3D version writes, as opposed to a garment's PNG atlas. */
 const MODEL_EXTENSIONS = ['glb', 'gltf', 'obj', 'stl']
 
+/** Whether one version holds a model file rather than a garment atlas. */
+function isModelVersion(version: RecordVersion): boolean {
+  if (version.model) return true
+  const extension = version.atlas.toLowerCase().split('.').pop() ?? ''
+  return MODEL_EXTENSIONS.includes(extension)
+}
+
 /**
- * Whether a record holds a 3D model rather than a garment.
+ * What a model version's checks are.
  *
- * Decided by the version's own file, not by `record.kind`: the host files a
- * record under the generator folder, so `kind` is the folder name and would say
- * `prop` for a model but `shirt` for a garment — while the reliable signal is
- * whether the version wrote a model file at all.
+ * A model has no classic template, no layers and no painted regions, so the
+ * garment checks would report a 585x559 template and zero layers for something
+ * that is not a garment at all. What it does have is a file, a size, a triangle
+ * count and a pass/fail — and those come from the same `report` the host wrote.
  */
+function ModelChecks({ version }: { version: RecordVersion }): React.JSX.Element {
+  const report = version.report as
+    | {
+        ok?: boolean
+        triangles?: number
+        size?: number[]
+        issues?: { level: string; message: string }[]
+      }
+    | undefined
+  const issues = report?.issues ?? []
+  const errors = issues.filter((issue) => issue.level === 'error')
+  const ok = report?.ok ?? version.ok ?? true
+  const size = report?.size
+
+  return (
+    <div>
+      <div className="mb-2 flex items-center justify-between">
+        <span className="text-[10.5px] text-muted-foreground">A 3D model, not a garment</span>
+        <span
+          className={cn(
+            'inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-3xs font-semibold',
+            ok ? 'bg-success/15 text-success' : 'bg-destructive/15 text-destructive'
+          )}
+        >
+          {ok ? 'Ready' : 'Failed'}
+        </span>
+      </div>
+      <dl className="m-0">
+        <div className={ROW_CLASS}>
+          <dt className={KEY_CLASS}>File</dt>
+          <dd className={VALUE_CLASS}>{version.model ?? version.atlas}</dd>
+        </div>
+        {typeof report?.triangles === 'number' && (
+          <div className={ROW_CLASS}>
+            <dt className={KEY_CLASS}>Triangles</dt>
+            <dd className={VALUE_CLASS}>{report.triangles.toLocaleString()}</dd>
+          </div>
+        )}
+        {Array.isArray(size) && size.length === 3 && (
+          <div className={ROW_CLASS}>
+            <dt className={KEY_CLASS}>Size</dt>
+            <dd className={VALUE_CLASS}>
+              {size.map((value) => value.toFixed(2)).join(' x ')} studs
+            </dd>
+          </div>
+        )}
+        <div className={ROW_CLASS}>
+          <dt className={KEY_CLASS}>Issues</dt>
+          <dd className={VALUE_CLASS}>
+            {issues.length ? `${issues.length} (${errors.length} error)` : 'none'}
+          </dd>
+        </div>
+      </dl>
+      {issues.length > 0 && (
+        <ul className="mt-2 flex flex-col gap-1 text-3xs leading-relaxed">
+          {issues.slice(0, 6).map((issue, index) => (
+            <li
+              key={`${issue.level}-${index}`}
+              className={issue.level === 'error' ? 'text-destructive' : 'text-muted-foreground'}
+            >
+              {issue.message}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+/** Whether a record holds a 3D model rather than a garment. */
 export function isModelRecord(record: ArtifactRecord | null): boolean {
   if (!record) return false
   const version = currentVersion(record)

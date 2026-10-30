@@ -403,13 +403,18 @@ pub fn save_artifact_result(
 
 fn version_fields(fields: &serde_json::Map<String, Value>) -> Value {
     let text = |key: &str| fields.get(key).and_then(Value::as_str).map(str::to_string);
+    let report = fields.get("report").cloned().unwrap_or(Value::Null);
+    // `Value::get` on a non-object yields None, so `ok` is read through the same
+    // object check the report itself needs.
+    let ok = report.get("ok").and_then(Value::as_bool);
     serde_json::json!({
         "prompt": text("prompt"),
         "design": fields.get("design").cloned().unwrap_or(Value::Null),
-        "ok": fields
-            .get("report")
-            .and_then(|report| report.get("ok"))
-            .and_then(Value::as_bool),
+        "ok": ok,
+        // The whole report, not just `ok`: a 3D version's checks are triangles,
+        // size and the issue list, and the Inspector has nothing to show
+        // without them. A garment carries it too, so one shape serves both.
+        "report": report,
         "name": text("name"),
         "kind": text("kind"),
     })

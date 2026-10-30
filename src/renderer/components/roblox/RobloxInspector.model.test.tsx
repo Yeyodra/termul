@@ -219,3 +219,82 @@ describe('the empty hint', () => {
     expect(screen.getByText(/Pick a garment in the Roblox panel/)).toBeInTheDocument()
   })
 })
+
+describe('the Checks tab, per kind', () => {
+  it('reports model facts instead of a classic template', () => {
+    const active: ArtifactRecord = {
+      ...record({ n: 1, model: 'v1.glb' }),
+      versions: [
+        {
+          n: 1,
+          at: 1,
+          ok: true,
+          atlas: 'v1.glb',
+          model: 'v1.glb',
+          kind: 'prop',
+          report: { ok: true, triangles: 1240, size: [4.3, 2.1, 2.8], issues: [] }
+        }
+      ]
+    }
+    render(
+      <RobloxInspector
+        record={active}
+        version={active.versions[0]}
+        paint={null}
+        tabs={MODEL_TABS}
+        tab="Checks"
+      />
+    )
+
+    expect(screen.getByText('A 3D model, not a garment')).toBeInTheDocument()
+    expect(screen.getByText('1,240')).toBeInTheDocument()
+    expect(screen.getByText('4.30 x 2.10 x 2.80 studs')).toBeInTheDocument()
+    expect(screen.getByText('v1.glb')).toBeInTheDocument()
+    // The garment checks must not leak onto a model.
+    expect(screen.queryByText(/classic template/)).toBeNull()
+    expect(screen.queryByText(/Layers/)).toBeNull()
+  })
+
+  it('lists the issues a model report carries', () => {
+    const active: ArtifactRecord = {
+      ...record({ n: 1, model: 'v1.glb' }),
+      versions: [
+        {
+          n: 1,
+          at: 1,
+          ok: false,
+          atlas: 'v1.glb',
+          model: 'v1.glb',
+          kind: 'prop',
+          report: {
+            ok: false,
+            triangles: 4200,
+            size: [1, 1, 1],
+            issues: [{ level: 'error', message: '4200 triangles; UGC accessories allow 4000.' }]
+          }
+        }
+      ]
+    }
+    render(
+      <RobloxInspector
+        record={active}
+        version={active.versions[0]}
+        paint={null}
+        tabs={MODEL_TABS}
+        tab="Checks"
+      />
+    )
+
+    expect(screen.getByText('Failed')).toBeInTheDocument()
+    expect(screen.getByText(/UGC accessories allow 4000/)).toBeInTheDocument()
+  })
+
+  it('still shows the garment template for clothing', () => {
+    const active = garment()
+    render(
+      <RobloxInspector record={active} version={active.versions[0]} paint={null} tab="Checks" />
+    )
+    expect(screen.getByText(/classic template/)).toBeInTheDocument()
+    expect(screen.queryByText('A 3D model, not a garment')).toBeNull()
+  })
+})
