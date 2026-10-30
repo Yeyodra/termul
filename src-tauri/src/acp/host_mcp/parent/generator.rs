@@ -16,6 +16,7 @@ use tokio::sync::oneshot;
 use super::HostPlanServer;
 use crate::acp::events;
 use crate::acp::host_mcp::FrameReply;
+use crate::web::sink::{record_host_event, HostRecordFanout};
 /// How long the host waits for the renderer to answer one generator call.
 ///
 /// A `generate_*` call only queues work and a `get_*_task` call only reads a
@@ -121,6 +122,9 @@ impl HostPlanServer {
     /// path the canvas export uses. A failed write is not a failed generation:
     /// the picture was already handed to the model, so the result is returned
     /// unchanged with a `save` note saying why no file exists.
+    ///
+    /// The atlas is kept per version rather than overwritten, unlike RobloxKit:
+    /// its chat link carries the item, so an old card opens the newest version.
     async fn save_generated_garment(
         &self,
         session_id: &str,
@@ -145,7 +149,7 @@ impl HostPlanServer {
             );
             return Some(result);
         };
-        let relative = garment_path(fields);
+        let record_dir = garment_dir(fields);
         let bytes = match decode_data_url(&atlas) {
             Ok(bytes) => bytes,
             Err(reason) => {
@@ -156,19 +160,35 @@ impl HostPlanServer {
                 return Some(result);
             }
         };
+        let still = fields
+            .get("image")
+            .and_then(|value| value.as_str())
+            .and_then(|url| decode_data_url(url).ok());
+        let version = version_fields(fields);
         let root = scope.root.clone();
-        let requested = relative.clone();
+        let requested = record_dir.clone();
         let written = tokio::task::spawn_blocking(move || {
-            crate::acp::host_mcp::canvas_policy::write_project_file(&root, &requested, &bytes)
+            write_record(&root, &requested, &bytes, still.as_deref(), version)
         })
         .await;
+        let kind = fields
+            .get("kind")
+            .and_then(Value::as_str)
+            .unwrap_or("artifact")
+            .to_string();
         let note = match written {
-            Ok(Ok(file)) => serde_json::json!({
-                "saved": true,
-                "path": file.absolute.to_string_lossy(),
-                "relative": file.relative,
-            }),
-            Ok(Err(error)) => serde_json::json!({ "saved": false, "reason": error.message }),
+            Ok(Ok(saved)) => {
+                self.announce_artifact(session_id, &saved, &kind);
+                serde_json::json!({
+                    "saved": true,
+                    "path": saved.atlas_absolute,
+                    "relative": saved.atlas_relative,
+                    "itemPath": saved.item_absolute,
+                    "slug": saved.slug,
+                    "version": saved.version,
+                })
+            }
+            Ok(Err(error)) => serde_json::json!({ "saved": false, "reason": error }),
             Err(error) => serde_json::json!({
                 "saved": false,
                 "reason": format!("the write stopped: {error}"),
@@ -218,6 +238,42 @@ impl HostPlanServer {
             + 1
     }
 
+    /// Show the finished garment in the agent's own reply.
+    ///
+    /// A `message_chunk` is the only durable record that survives a relaunch and
+    /// renders as a bubble: `tool_call` payloads are reduced to id/kind/status, so
+    /// a picture written there is dropped. The chunk carries the file's URI, never
+    /// the bytes - the atlas already lives in the record directory, and a base64
+    /// copy would ride in every transcript write.
+    fn announce_artifact(&self, session_id: &str, saved: &SavedRecord, kind: &str) {
+        if saved.still_absolute.is_none() {
+            return;
+        }
+        let chunk = serde_json::json!({
+            "role": "agent",
+            "content": {
+                "type": "image",
+                "uri": format!("file://{}", saved.still_absolute.as_deref().unwrap_or_default()),
+                "mimeType": "image/png",
+                "slug": saved.slug,
+                "kind": kind,
+                "version": saved.version,
+            },
+        });
+        if let Err(error) = record_host_event(
+            &self.sinks,
+            session_id,
+            "message_chunk",
+            &chunk,
+            HostRecordFanout::AllSinks,
+        ) {
+            log::warn!(
+                "[generator] could not announce the saved garment for session {}: {error}",
+                crate::logging::redact_session_id(session_id)
+            );
+        }
+    }
+
     /// Park a call without a frame, so tests can exercise the reply and
     /// cancellation bookkeeping directly (tests only).
     #[cfg(test)]
@@ -233,21 +289,229 @@ impl HostPlanServer {
     }
 }
 
-/// Where a garment is written inside the project, mirroring RobloxKit's
-/// `Documents/RobloxKit/clothing/<slug>.png` so a user who knows one layout
-/// recognises the other.
-fn garment_path(fields: &serde_json::Map<String, Value>) -> String {
+/// The record directory a save belongs to.
+///
+/// `recordSlug` wins when the caller knows it. That is the whole point of the
+/// field: a revision must land in the SAME record as the garment it revises, and
+/// the model's chosen name cannot be trusted for that. Asking the model to "keep
+/// the same name" is a request; a slug is a fact. Without it a user who asked for
+/// pants on top of a shirt got a second record and lost the first one's history.
+///
+/// The name is still the fallback, for an agent that only ever creates.
+fn garment_dir(fields: &serde_json::Map<String, Value>) -> String {
     let kind = fields
         .get("kind")
         .and_then(Value::as_str)
-        .unwrap_or("clothing");
+        .unwrap_or("artifact");
+    let record_slug = fields
+        .get("recordSlug")
+        .and_then(Value::as_str)
+        .map(slug)
+        .filter(|slug| !slug.is_empty());
     let name = fields
         .get("name")
         .and_then(Value::as_str)
         .map(slug)
         .filter(|slug| !slug.is_empty())
         .unwrap_or_else(|| kind.to_string());
-    format!(".termul/generated/{kind}/{name}.png")
+    format!(
+        ".termul/generated/{kind}/{}",
+        record_slug.unwrap_or(name)
+    )
+}
+
+/// What a save wrote, in the shape both callers report.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedArtifact {
+    pub slug: String,
+    pub version: u64,
+    pub path: String,
+    pub relative: String,
+    pub item_path: String,
+}
+
+/// Write a finished artifact into `root`, without a session.
+///
+/// This is the seam the page composer uses. `save_generated_garment` is reachable
+/// only from `answer_generator_call`, which needs an agent's tool call parked and
+/// waiting, so a user typing on a feature page had no way to produce a record
+/// without going through a chat. The write itself is the same one, under the same
+/// lock, so the two paths cannot disagree about how a record is laid out.
+///
+/// `result` is the engine's finished result, exactly as the renderer reports it
+/// for a poll: `atlas`, optional `image`, `kind`, `name`, `prompt`, `design`,
+/// `report`. Returns the write note, or an error string the caller shows.
+pub fn save_artifact_result(
+    root: &std::path::Path,
+    result: &Value,
+) -> Result<SavedArtifact, String> {
+    let fields = result
+        .as_object()
+        .ok_or_else(|| "the result is not an object".to_string())?;
+
+    let atlas = fields
+        .get("atlas")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "the result carries no atlas".to_string())?;
+    let bytes = decode_data_url(atlas)?;
+
+    let still = fields
+        .get("image")
+        .and_then(Value::as_str)
+        .and_then(|url| decode_data_url(url).ok());
+    let version = version_fields(fields);
+    let record_dir = garment_dir(fields);
+
+    let saved = write_record(root, &record_dir, &bytes, still.as_deref(), version)?;
+    Ok(SavedArtifact {
+        slug: saved.slug,
+        version: saved.version,
+        path: saved.atlas_absolute,
+        relative: saved.atlas_relative,
+        item_path: saved.item_absolute,
+    })
+}
+
+fn version_fields(fields: &serde_json::Map<String, Value>) -> Value {
+    let text = |key: &str| fields.get(key).and_then(Value::as_str).map(str::to_string);
+    serde_json::json!({
+        "prompt": text("prompt"),
+        "design": fields.get("design").cloned().unwrap_or(Value::Null),
+        "ok": fields
+            .get("report")
+            .and_then(|report| report.get("ok"))
+            .and_then(Value::as_bool),
+        "name": text("name"),
+        "kind": text("kind"),
+    })
+}
+
+struct SavedRecord {
+    slug: String,
+    version: u64,
+    atlas_absolute: String,
+    atlas_relative: String,
+    item_absolute: String,
+    still_absolute: Option<String>,
+}
+
+/// Append one version to `<root>/<record_dir>/item.json`, writing its atlas and
+/// its still beside it. The read-modify-write of the record happens under one
+/// blocking call so two generations of the same slug cannot both read the same
+/// `max(n)` and write the same `v<n>.png`.
+fn write_record(
+    root: &std::path::Path,
+    record_dir: &str,
+    atlas: &[u8],
+    still: Option<&[u8]>,
+    version: Value,
+) -> Result<SavedRecord, String> {
+    use crate::acp::host_mcp::canvas_policy::write_project_file;
+
+    let item_relative = format!("{record_dir}/item.json");
+    let existing = read_record(root, &item_relative);
+    let n = existing
+        .get("versions")
+        .and_then(Value::as_array)
+        .map(|versions| {
+            versions
+                .iter()
+                .filter_map(|version| version.get("n").and_then(Value::as_u64))
+                .max()
+                .unwrap_or(0)
+        })
+        .unwrap_or(0)
+        + 1;
+
+    let atlas_name = format!("v{n}.png");
+    let atlas_relative = format!("{record_dir}/{atlas_name}");
+    let atlas_file = write_project_file(root, &atlas_relative, atlas).map_err(|error| error.message)?;
+
+    let (still_name, still_absolute) = match still {
+        Some(bytes) => {
+            let name = format!("v{n}.still.png");
+            let file = write_project_file(root, &format!("{record_dir}/{name}"), bytes)
+                .map_err(|error| error.message)?;
+            (
+                Value::String(name),
+                Some(file.absolute.to_string_lossy().to_string()),
+            )
+        }
+        None => (Value::Null, None),
+    };
+
+    let now = now_millis();
+    let mut version = version;
+    if let Some(fields) = version.as_object_mut() {
+        fields.insert("n".to_string(), serde_json::json!(n));
+        fields.insert("at".to_string(), serde_json::json!(now));
+        fields.insert("atlas".to_string(), Value::String(atlas_name));
+        fields.insert("still".to_string(), still_name);
+    }
+
+    let slug = record_dir
+        .rsplit('/')
+        .next()
+        .unwrap_or(record_dir)
+        .to_string();
+    let mut record = existing;
+    let fields = record
+        .as_object_mut()
+        .ok_or_else(|| "the record is not an object".to_string())?;
+    fields.insert("schema".to_string(), serde_json::json!(1));
+    fields.insert("slug".to_string(), Value::String(slug.clone()));
+    fields.insert("current".to_string(), serde_json::json!(n));
+    fields.insert("updatedAt".to_string(), serde_json::json!(now));
+    fields
+        .entry("createdAt")
+        .or_insert_with(|| serde_json::json!(now));
+    let versions = fields
+        .entry("versions")
+        .or_insert_with(|| Value::Array(Vec::new()));
+    match versions.as_array_mut() {
+        Some(list) => list.push(version),
+        None => *versions = Value::Array(vec![version]),
+    }
+
+    let item_file = write_project_file(root, &item_relative, record.to_string().as_bytes())
+        .map_err(|error| error.message)?;
+
+    Ok(SavedRecord {
+        slug,
+        version: n,
+        atlas_absolute: atlas_file.absolute.to_string_lossy().to_string(),
+        atlas_relative: atlas_file.relative,
+        item_absolute: item_file.absolute.to_string_lossy().to_string(),
+        still_absolute,
+    })
+}
+
+/// The existing record, or an empty object when it is missing or unreadable.
+/// A corrupt record must not fail a generation: the picture is already rendered,
+/// so the record is rebuilt from this version.
+fn read_record(root: &std::path::Path, relative: &str) -> Value {
+    let path = root.join(relative);
+    let Ok(text) = std::fs::read_to_string(&path) else {
+        return serde_json::json!({});
+    };
+    match serde_json::from_str::<Value>(&text) {
+        Ok(value) if value.is_object() => value,
+        _ => {
+            log::warn!(
+                "[generator] record `{}` is not valid JSON; starting a fresh one",
+                relative
+            );
+            serde_json::json!({})
+        }
+    }
+}
+
+fn now_millis() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_millis() as u64)
+        .unwrap_or(0)
 }
 
 /// Lowercase, `-` for runs of anything else, and empty when nothing usable is

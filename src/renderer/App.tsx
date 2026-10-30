@@ -36,6 +36,7 @@ import WorkspaceLayout from './layouts/WorkspaceLayout'
 
 const WorkspaceDashboard = lazy(() => import('./pages/WorkspaceDashboard'))
 const WorkspaceSnapshots = lazy(() => import('./pages/WorkspaceSnapshots'))
+const RobloxPage = lazy(() => import('./pages/RobloxPage'))
 const NotFound = lazy(() => import('./pages/NotFound'))
 
 function RouteFallback(): React.JSX.Element {
@@ -223,6 +224,14 @@ const router = createHashRouter(
           )
         },
         { path: 'c/:sessionId', element: <ChatRoute /> },
+        {
+          path: 'roblox/*',
+          element: (
+            <Suspense fallback={<RouteFallback />}>
+              <RobloxPage />
+            </Suspense>
+          )
+        },
         {
           path: 'snapshots',
           element: (

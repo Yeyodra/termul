@@ -1,4 +1,4 @@
-﻿/**
+/**
  * The clothing engine behind `designLoop`.
  *
  * `build(design)` is the validator contract: it returns a `BuildResult` on
@@ -56,6 +56,12 @@ export interface ClothingBuildOptions {
   avatarSheet?: boolean
   rig?: Rig
   skin?: string
+  /**
+   * Called as each visible layer reaches the sheet, so a page can show
+   * "Drawing layer 5 of 7" while the render runs. Absent for the agent path,
+   * which only needs the finished result.
+   */
+  onLayer?: (drawn: number, total: number, canvas: SheetCanvas) => void
 }
 
 /** Decode a data URL through an `Image`, as upstream's cached loader does. */
@@ -116,7 +122,8 @@ export async function buildClothing(
     loadImage = defaultImageLoader,
     avatarSheet = true,
     rig = 'R15',
-    skin
+    skin,
+    onLayer
   }: ClothingBuildOptions
 ): Promise<BuildResult> {
   const normalized = attachImages(normalizeDesign(spec as ClothingDesign, type), images)
@@ -129,7 +136,7 @@ export async function buildClothing(
 
   let drawn: SheetCanvas
   try {
-    drawn = await renderToCanvas(normalized, sheet, loadImage)
+    drawn = await renderToCanvas(normalized, sheet, loadImage, onLayer)
   } catch (error) {
     throw new ImageUnavailable(error instanceof Error ? error.message : String(error))
   }

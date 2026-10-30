@@ -60,6 +60,32 @@ export function toolIconName(toolCall: ToolCall): ToolIconName {
   return kindIcon(toolCall.kind)
 }
 
+/**
+ * The generator family a tool call belongs to, or `null`. The name arrives
+ * namespaced by the MCP server (`mcp__termul__generate_clothing`), and every
+ * family is spelled `generate_<feature>` / `get_<feature>_task`.
+ */
+export function generatorFeature(toolCall: ToolCall): string | null {
+  const name = toolCall.title?.trim().toLowerCase() ?? ''
+  const bare = name.replace(/^mcp__[a-z0-9_]+__/, '')
+  const match = /^(?:generate_([a-z0-9]+)|get_([a-z0-9]+?)_task)$/.exec(bare)
+  return match ? (match[1] ?? match[2] ?? null) : null
+}
+
+export function isGeneratorCall(toolCall: ToolCall): boolean {
+  return generatorFeature(toolCall) !== null
+}
+
+export const FEATURE_LABELS: Record<string, string> = {
+  clothing: 'Clothing',
+  '3d': '3D Generator',
+  vfx: 'VFX',
+  gfx: 'GFX',
+  icon: 'Icon',
+  sfx: 'SFX',
+  animation: 'Animation'
+}
+
 export interface StatusStyle {
   label: string
   /** Tailwind classes for the status badge. */

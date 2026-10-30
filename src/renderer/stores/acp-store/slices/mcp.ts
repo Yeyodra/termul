@@ -11,7 +11,15 @@ import {
   saveMcpServers as saveMcpServersToDisk,
   syncMcpRegistryToProjectBestEffort
 } from '@/lib/acp-mcp-persistence'
+import { persistenceApi } from '@/lib/api'
 import { logFrontendError } from '@/lib/log-api'
+import {
+  ROBLOX_STUDIO_MCP_COMMAND,
+  ROBLOX_STUDIO_MCP_ID,
+  robloxRegistryAction,
+  robloxStudioEntry
+} from '@/lib/roblox-studio-mcp'
+import { robloxApi } from '@/lib/tauri-roblox'
 import { isTauriContext } from '@/lib/tauri-runtime'
 import { useProjectStore } from '@/stores/project-store'
 import type { AcpState } from '../types'
@@ -35,6 +43,71 @@ async function runSerializedMcpRegistryMutation(mutation: () => Promise<void>): 
   // Swallow for the chain only — the returned promise still rejects to callers.
   mcpRegistryQueue = run.catch(() => undefined)
   await run
+}
+
+/**
+ * Persisted opt-out for the auto-seeded Roblox entry: set when the user deletes
+ * it, cleared when they add it back. Without it, seeding on every load would
+ * undo a deliberate deletion.
+ */
+const ROBLOX_ENTRY_REMOVED_KEY = 'roblox/studio-mcp-entry-removed'
+
+async function robloxEntryRemovedByUser(): Promise<boolean> {
+  if (!isTauriContext()) return false
+  const res = await persistenceApi.read<unknown>(ROBLOX_ENTRY_REMOVED_KEY)
+  return res.success && res.data === true
+}
+
+async function setRobloxEntryRemovedByUser(removed: boolean): Promise<void> {
+  if (!isTauriContext()) return
+  await persistenceApi.write(ROBLOX_ENTRY_REMOVED_KEY, removed)
+}
+
+/**
+ * Seed or repair the Roblox entry as the registry loads.
+ *
+ * Roblox Studio ships its own MCP proxy, so a user with Studio installed should
+ * not have to configure anything: this adds the token entry on first load. It
+ * also repairs an entry written by an earlier build, whose stored absolute path
+ * points at a `version-<hash>` directory Roblox has since replaced — the exact
+ * reason the badge read "Unreachable" while a Roblox chat still worked.
+ *
+ * Best-effort: a discovery failure or a rejected write leaves the loaded list
+ * untouched, because a chat must still start without Studio.
+ */
+async function reconcileRobloxEntry(list: StoredMcpServer[]): Promise<StoredMcpServer[]> {
+  const existing = list.find((server) => server.id === ROBLOX_STUDIO_MCP_ID)
+  if (existing?.type === 'stdio' && existing.command === ROBLOX_STUDIO_MCP_COMMAND) {
+    return list
+  }
+
+  const removedByUser = await robloxEntryRemovedByUser()
+  const discovered = await robloxApi.studioPath()
+  if (!discovered.success) return list
+
+  const action = robloxRegistryAction(list, discovered.data?.found === true, removedByUser)
+  if (action === 'none') return list
+
+  const next =
+    action === 'add'
+      ? [...list, robloxStudioEntry()]
+      : list.map((server) => (server.id === ROBLOX_STUDIO_MCP_ID ? robloxStudioEntry() : server))
+  try {
+    await saveMcpServersToDisk(next, activeProjectId())
+  } catch (err) {
+    void logFrontendError({
+      level: 'warn',
+      source: 'acp-store.reconcileRobloxEntry',
+      message: `could not persist the Roblox MCP entry (${String(err)})`
+    })
+    return list
+  }
+  void logFrontendError({
+    level: 'info',
+    source: 'acp-store.reconcileRobloxEntry',
+    message: `Roblox MCP entry ${action === 'add' ? 'seeded' : 'repaired'}`
+  })
+  return next
 }
 
 type McpSliceState = Pick<
@@ -184,7 +257,8 @@ export const createMcpSlice: McpSliceCreator = (set, get) => ({
 
   loadMcpServers: async () => {
     try {
-      const list = await loadMcpServersFromDisk(activeProjectId())
+      const loaded = await loadMcpServersFromDisk(activeProjectId())
+      const list = await reconcileRobloxEntry(loaded)
       set({ mcpServers: list, mcpServersLoaded: true })
       if (projectFileMirrorPending) {
         const projectId = projectFileMirrorPending
@@ -223,6 +297,9 @@ export const createMcpSlice: McpSliceCreator = (set, get) => ({
       const previous = list[idx]
       if (previous && !sameProbeConfig(previous, nextServer))
         reprobeEditedServer(set, get, nextServer)
+      if (server.id === ROBLOX_STUDIO_MCP_ID) {
+        await setRobloxEntryRemovedByUser(false).catch(() => undefined)
+      }
     }),
 
   importMcpServers: async (servers) => {
@@ -277,6 +354,9 @@ export const createMcpSlice: McpSliceCreator = (set, get) => ({
         throw err
       }
       deletionCounts.set(id, mcpServerDeletionCount(id) + 1)
+      if (id === ROBLOX_STUDIO_MCP_ID) {
+        await setRobloxEntryRemovedByUser(true).catch(() => undefined)
+      }
       set((s) => ({
         ...withoutProbeState(s, id),
         mcpOAuthConnected: omitKey(s.mcpOAuthConnected, id),

@@ -8,12 +8,24 @@ import type { Project } from '@/types/project'
 export const ROBLOX_STUDIO_MCP_ID = 'roblox-studio'
 export const ROBLOX_PROJECT_NAME = 'Roblox'
 
-export function robloxStudioEntry(command: string): StoredMcpServer {
+/**
+ * The registry stores this token instead of a real `StudioMCP.exe` path. Roblox
+ * installs every update under a new `version-<hash>` directory, so a stored path
+ * goes stale and the server stops spawning (the badge reads "Unreachable" while
+ * a freshly resolved path still works). The backend expands the token through
+ * `roblox::resolve_known_command` at every spawn.
+ *
+ * MUST equal `ROBLOX_STUDIO_MCP_ID`: it doubles as the server name, and the Rust
+ * `STUDIO_MCP_COMMAND_TOKEN` must match it too.
+ */
+export const ROBLOX_STUDIO_MCP_COMMAND = ROBLOX_STUDIO_MCP_ID
+
+export function robloxStudioEntry(): StoredMcpServer {
   return {
     id: ROBLOX_STUDIO_MCP_ID,
     type: 'stdio',
     name: 'roblox-studio',
-    command,
+    command: ROBLOX_STUDIO_MCP_COMMAND,
     args: [],
     env: [],
     enabled: true
@@ -21,11 +33,49 @@ export function robloxStudioEntry(command: string): StoredMcpServer {
 }
 
 /**
- * Resolve `StudioMCP.exe` on this machine and make sure the MCP registry has a
- * matching entry. The path is re-resolved on every call because Roblox installs
- * each update under a new `version-<hash>` directory.
+ * What the registry should hold for the Roblox bridge on this machine.
  *
- * Returns the command to use, or `null` after telling the user why.
+ * - `none`     — Studio is not installed, or the user deleted the entry on
+ *                purpose; leave the registry alone.
+ * - `add`      — Studio is installed and the registry has no entry; seed one.
+ * - `upgrade`  — the entry still holds an absolute path from an earlier build
+ *                (possibly a dead `version-<hash>`); rewrite it to the token.
+ */
+export type RobloxRegistryAction = 'none' | 'add' | 'upgrade'
+
+/**
+ * Decide the action from the registry list plus Studio's presence.
+ *
+ * Split from the store so the rule is testable without a running app. An entry
+ * whose command is already the token is left untouched even when Studio moved to
+ * a new version directory, which is the point of the token.
+ *
+ * `removedByUser` is the persisted opt-out: a user who deleted the entry does
+ * not get it back on the next launch.
+ */
+export function robloxRegistryAction(
+  servers: StoredMcpServer[],
+  studioInstalled: boolean,
+  removedByUser: boolean
+): RobloxRegistryAction {
+  if (!studioInstalled) return 'none'
+  const existing = servers.find((server) => server.id === ROBLOX_STUDIO_MCP_ID)
+  if (!existing) return removedByUser ? 'none' : 'add'
+  if (existing.type !== 'stdio') return 'none'
+  return existing.command === ROBLOX_STUDIO_MCP_COMMAND ? 'none' : 'upgrade'
+}
+
+/**
+ * Make sure the MCP registry has a usable `roblox-studio` entry, and confirm
+ * Studio is actually installed.
+ *
+ * The entry is compared by command, not by resolved path: a correct entry is
+ * the token, so an install that moved to a new `version-<hash>` no longer makes
+ * it stale. An entry still holding an old absolute path (written by an earlier
+ * build) is rewritten to the token, which repairs it without a user action.
+ *
+ * Returns the resolved `StudioMCP.exe` path, or `null` after telling the user
+ * why. The path is only used for the caller's own checks — it is never stored.
  */
 export async function ensureRobloxStudioMcp(): Promise<string | null> {
   const result = await robloxApi.studioPath()
@@ -44,11 +94,15 @@ export async function ensureRobloxStudioMcp(): Promise<string | null> {
 
   const state = useAcpStore.getState()
   const existing = state.mcpServers.find((server) => server.id === ROBLOX_STUDIO_MCP_ID)
-  if (existing?.type === 'stdio' && existing.command === command && existing.enabled !== false) {
+  if (
+    existing?.type === 'stdio' &&
+    existing.command === ROBLOX_STUDIO_MCP_COMMAND &&
+    existing.enabled !== false
+  ) {
     return command
   }
 
-  await state.saveMcpServer(robloxStudioEntry(command))
+  await state.saveMcpServer(robloxStudioEntry())
   return command
 }
 

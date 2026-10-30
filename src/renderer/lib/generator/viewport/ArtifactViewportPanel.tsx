@@ -64,7 +64,21 @@ export function ArtifactViewportPanel({
 
   useEffect(() => {
     const viewport = viewportRef.current
-    if (!viewport || !artifact) return
+    if (!viewport) return
+
+    // No artifact means "show nothing", not "leave the last one up". Returning
+    // early here kept the previous garment's scene attached, so starting a new
+    // garment cleared the Inspector and the facts but left the old avatar in the
+    // viewport - the page looked half-fresh, which reads as a bug.
+    if (!artifact) {
+      disposeSceneRef.current?.()
+      disposeSceneRef.current = null
+      viewport.clear()
+      setLabel('')
+      setError(null)
+      return
+    }
+
     let cancelled = false
     const rebuilt: Artifact = artifact.kind === 'clothing' ? { ...artifact, rig } : artifact
 

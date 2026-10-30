@@ -20,6 +20,7 @@ import { createAskBrain, createBrainTakesImages } from '@/lib/generator/ask-brai
 import { CLOTHING_SYSTEM_PROMPT } from '@/lib/generator/engines/clothing'
 import { createGeneratorHandler } from '@/lib/generator/gateway-handler'
 import { TaskQueue } from '@/lib/generator/task-queue'
+import type { ClothingToolDeps } from '@/lib/generator/tools/generate-clothing'
 import type { Brain } from '@/lib/generator/types'
 
 export interface GeneratorGatewayOptions {
@@ -43,9 +44,9 @@ export interface GeneratorGatewayOptions {
 export function startGeneratorGateway(
   options: GeneratorGatewayOptions,
   transport: AcpTransport = getAcpTransport()
-): () => void {
+): { stop: () => void; queue: TaskQueue } {
   const gateway = transport.generator
-  if (!gateway) return () => {}
+  if (!gateway) return { stop: () => {}, queue: options.queue ?? new TaskQueue() }
 
   const queue = options.queue ?? new TaskQueue()
   const resolve = options.agent ?? ((hint: GeneratorAgentHint) => resolveGeneratorAgent(hint))
@@ -54,33 +55,60 @@ export function startGeneratorGateway(
     return agent ? { id: brainIdOf(agent.id), takesImages: agent.takesImages } : { id: 'custom' }
   }
 
-  gateway.setHandler(
-    createGeneratorHandler({
-      queue,
-      clothing: {
-        queue,
-        brain: brainOf({ cwd: options.cwd }),
-        askBrain: createAskBrain({
-          transport: createAcpBrainTransport({
-            agentId: () => resolve({ cwd: options.cwd })?.id ?? null,
-            cwd: options.cwd
-          })
-        }),
-        brainTakesImages: createBrainTakesImages(
-          () => resolve({ cwd: options.cwd })?.takesImages ?? false
-        ),
-        agentFor: (task) =>
-          resolve({ agentId: task.agentId, sessionId: task.sessionId, cwd: options.cwd })?.id ??
-          null,
-        system: options.system ?? CLOTHING_SYSTEM_PROMPT
-      }
-    })
-  )
-
-  return () => {
-    gateway.setHandler(null)
-    queue.cancelAll()
+  const clothing = {
+    queue,
+    brain: brainOf({ cwd: options.cwd }),
+    askBrain: createAskBrain({
+      transport: createAcpBrainTransport({
+        agentId: () => resolve({ cwd: options.cwd })?.id ?? null,
+        cwd: options.cwd
+      })
+    }),
+    brainTakesImages: createBrainTakesImages(
+      () => resolve({ cwd: options.cwd })?.takesImages ?? false
+    ),
+    agentFor: (task: { agentId?: string | null; sessionId?: string | null }) =>
+      resolve({ agentId: task.agentId, sessionId: task.sessionId, cwd: options.cwd })?.id ?? null,
+    system: options.system ?? CLOTHING_SYSTEM_PROMPT
   }
+
+  gateway.setHandler(createGeneratorHandler({ queue, clothing }))
+  // The page composer runs the same engine the agent's tool call would, so it
+  // needs the same deps. Handing them out here is what keeps one task queue and
+  // one system prompt for both entry points.
+  setPageGeneratorDeps({ queue, clothing })
+
+  return {
+    stop: () => {
+      gateway.setHandler(null)
+      setPageGeneratorDeps(null)
+      queue.cancelAll()
+    },
+    queue
+  }
+}
+
+/** The deps a page uses to start a generation itself. */
+interface PageGeneratorDeps {
+  queue: TaskQueue
+  clothing: ClothingToolDeps
+}
+
+let pageGeneratorDeps: PageGeneratorDeps | null = null
+
+function setPageGeneratorDeps(deps: PageGeneratorDeps | null): void {
+  pageGeneratorDeps = deps
+}
+
+/**
+ * The engine deps this window is serving, or `null` when no project is open.
+ *
+ * A page calls this to run a generation the user asked for directly, instead of
+ * waiting for an agent's tool call. It is the same `TaskQueue` and the same
+ * system prompt the agent path uses, so both produce identical records.
+ */
+export function pageGenerator(): PageGeneratorDeps | null {
+  return pageGeneratorDeps
 }
 
 /**

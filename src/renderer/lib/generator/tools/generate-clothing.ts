@@ -1,4 +1,4 @@
-﻿/**
+/**
  * `generate_clothing` as the agent sees it: return a `task_id` immediately, then
  * poll.
  *
@@ -41,6 +41,31 @@ export interface GenerateClothingArgs {
   agentId?: string
   /** The chat that asked. */
   sessionId?: string
+  /**
+   * The record this generation revises, when it revises one.
+   *
+   * The host files a record by this slug, so a revision lands as a new version of
+   * the same item instead of a second item beside it. Set by the page composer's
+   * Apply; absent for a fresh garment.
+   */
+  recordSlug?: string
+  /**
+   * The garments already in the outfit, so this one can be made to match.
+   *
+   * Only ever set when the user turns "match outfit" on. RobloxKit has no such
+   * feature - its prompt is `Design a <type>: <prompt>` and nothing else - so an
+   * automatic version mixed a fresh garment with whatever else the project held,
+   * which is why this is opt-in rather than the default.
+   */
+  companions?: OutfitCompanion[]
+}
+
+/** One garment already worn, as the model needs it to match a new one. */
+export interface OutfitCompanion {
+  type: DesignType
+  name: string
+  /** The current version's design, straight from `item.json`. */
+  design: unknown
 }
 
 /** What the tool returns before the work is done. */
@@ -71,6 +96,8 @@ export interface GenerateClothingResult {
   atlas?: string
   kind?: DesignType
   name?: string
+  /** The record this generation revises, when it revises one. */
+  recordSlug?: string
   save?: { saved: boolean; path?: string; relative?: string; reason?: string }
   /** What the checks found: `ok`, the issue list, size, coverage, colours. */
   report?: unknown
@@ -98,6 +125,12 @@ export interface ClothingToolDeps {
    */
   agentFor?: (task: { agentId?: string | null; sessionId?: string | null }) => string | null
   images?: string[]
+  /**
+   * Called as each visible layer reaches the sheet, so a page can show
+   * "Drawing layer 5 of 7". The agent path leaves it unset: it only needs the
+   * finished result.
+   */
+  onLayer?: (drawn: number, total: number, canvas: unknown) => void
 }
 
 /**
@@ -124,10 +157,68 @@ export function firstMessage(args: GenerateClothingArgs, studio?: SessionStudio)
       `Fix this ${args.type} design JSON and return the whole corrected design:\n\`\`\`json\n${JSON.stringify(args.design, null, 2)}\n\`\`\``
     )
   } else {
-    parts.push(`Design a ${args.type}: ${args.prompt ?? 'anything that fits the garment'}.`)
+    const ask = (args.prompt ?? 'anything that fits the garment').trim()
+    parts.push(`Design a ${args.type}: ${endsSentence(ask) ? ask : `${ask}.`}`)
+  }
+
+  if (args.companions?.length) {
+    const worn = args.companions.map(describeCompanion).join('\n')
+    parts.push(
+      `This garment is worn with others, so it has to look like one outfit. Match their colours, motifs and style:\n${worn}`
+    )
   }
 
   return { role: 'user', text: parts.join('\n\n') }
+}
+
+function endsSentence(text: string): boolean {
+  return /[.!?]$/.test(text)
+}
+
+/** A design longer than this is summarised: two full ones cost 18k characters. */
+const COMPANION_JSON_LIMIT = 1200
+
+/**
+ * One companion as a line the model can match against.
+ *
+ * A real garment is up to 40 layers, so the full design is sent only while it is
+ * small. Past the limit, the colours, the layer kinds and what they paint are
+ * what "make it match" needs, and the per-layer geometry is what costs tokens.
+ */
+function describeCompanion(one: OutfitCompanion): string {
+  const full = JSON.stringify(one.design)
+  if (full.length <= COMPANION_JSON_LIMIT) return `- ${one.type} "${one.name}": ${full}`
+
+  const design = (one.design ?? {}) as {
+    background?: unknown
+    layers?: Array<{
+      kind?: unknown
+      target?: unknown
+      color?: unknown
+      color2?: unknown
+      color3?: unknown
+    }>
+  }
+  const colors = new Set<string>()
+  const kinds = new Set<string>()
+  const targets = new Set<string>()
+  for (const layer of design.layers ?? []) {
+    for (const value of [layer.color, layer.color2, layer.color3]) {
+      if (typeof value === 'string') colors.add(value)
+    }
+    if (typeof layer.kind === 'string') kinds.add(layer.kind)
+    if (typeof layer.target === 'string') targets.add(layer.target)
+  }
+  if (typeof design.background === 'string') colors.add(design.background)
+
+  const summary = {
+    background: design.background ?? null,
+    layers: design.layers?.length ?? 0,
+    kinds: [...kinds],
+    targets: [...targets],
+    colors: [...colors]
+  }
+  return `- ${one.type} "${one.name}" (${summary.layers} layers, summarised): ${JSON.stringify(summary)}`
 }
 
 /** What the model is told to judge during the checking stage. */
@@ -211,7 +302,7 @@ export async function runClothingGeneration(
     brain,
     askBrain: deps.askBrain,
     brainTakesImages: deps.brainTakesImages,
-    build: async (spec) => buildClothing(spec, { type: args.type, images }),
+    build: async (spec) => buildClothing(spec, { type: args.type, images, onLayer: deps.onLayer }),
     normalize: (spec) => spec,
     review: (built) => clothingReview(built),
     onStage: ({ stage, detail }) => report(stage, detail ?? null)
@@ -230,6 +321,7 @@ export function readClothingResult(queue: TaskQueue, taskId: string): GenerateCl
   if (task.status === 'done') {
     const built = task.result as { result?: unknown; built?: BuildResult } | null
     const spec = built?.built?.spec as { type?: DesignType; name?: string } | undefined
+    const params = task.params as GenerateClothingArgs | undefined
     return {
       status: 'done',
       taskId,
@@ -239,6 +331,9 @@ export function readClothingResult(queue: TaskQueue, taskId: string): GenerateCl
       atlas: built?.built?.template as string | undefined,
       kind: spec?.type,
       name: spec?.name,
+      // Carried through so the host files a revision into the record it revises
+      // instead of into whatever folder the model's name happens to slug to.
+      recordSlug: params?.recordSlug,
       report: built?.built?.report,
       layout: built?.built?.layout,
       summary: `${task.title} is ready`

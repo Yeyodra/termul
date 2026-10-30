@@ -173,3 +173,37 @@ fn the_guide_forbids_the_file_fallback() {
     let guide = instructions();
     assert!(guide.contains("Do not write .lua files"));
 }
+
+#[test]
+fn every_generate_tool_offers_an_optional_record_slug() {
+    for family in FAMILIES {
+        let tool = generate_tool(family);
+        let properties = tool.input_schema["properties"]
+            .as_object()
+            .expect("properties");
+        assert!(
+            properties.contains_key("record_slug"),
+            "{} can revise an existing record",
+            tool.name
+        );
+        let required: Vec<&str> = tool.input_schema["required"]
+            .as_array()
+            .map(|list| list.iter().filter_map(Value::as_str).collect())
+            .unwrap_or_default();
+        assert!(
+            !required.contains(&"record_slug"),
+            "{} must not require record_slug: a new item has none",
+            tool.name
+        );
+    }
+}
+
+#[test]
+fn the_record_slug_description_says_it_revises_rather_than_duplicates() {
+    let tool = generate_tool(&FAMILIES[0]);
+    let description = tool.input_schema["properties"]["record_slug"]["description"]
+        .as_str()
+        .expect("a description the agent can read");
+    assert!(description.contains("revise"), "{description}");
+    assert!(description.contains("version"), "{description}");
+}

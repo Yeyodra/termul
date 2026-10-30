@@ -24,6 +24,7 @@ import type { ContentBlock, DiffContent, ToolCall, ToolCallContent } from '@/lib
 import { resolveDiffLanguage } from '@/lib/diff-highlight'
 import { type FilePathResolutionContext, openFilePathFromTerminal } from '@/lib/file-path-links'
 import { logFrontendError } from '@/lib/log-api'
+import { navigateToRoblox } from '@/lib/router-navigate'
 import { cn } from '@/lib/utils'
 import { MediaBlocks } from './ChatMessage'
 import { CHAT_ROW_ICON, CHAT_ROW_MIN_H } from './chat-layout'
@@ -31,7 +32,12 @@ import { CHEVRON_TRANSITION } from './chat-motion'
 import { DiffPreview } from './DiffPreview'
 import { EditDiffBlock } from './EditDiffBlock'
 import { HighlightedCode } from './highlighted-code'
-import { type ToolIconName, toolIconName } from './tool-call-format'
+import {
+  FEATURE_LABELS,
+  generatorFeature,
+  type ToolIconName,
+  toolIconName
+} from './tool-call-format'
 import {
   describeToolCall,
   firstString,
@@ -259,8 +265,14 @@ function ToolCallCardComponent({
   // terminal output) stays behind the collapsible row.
   const inlineDiff = hasDiff && !isSubagent
   const detailItems = inlineDiff ? content.filter((item) => item.type !== 'diff') : content
+  const detailWithoutPictures = detailItems.filter((item) => {
+    if (item.type !== 'content') return true
+    return (item as { content?: ContentBlock }).content?.type !== 'image'
+  })
   const hasDetail =
-    detailItems.length > 0 || (!inlineDiff && resultText.length > 0) || terminalOutput.length > 0
+    detailWithoutPictures.length > 0 ||
+    (!inlineDiff && resultText.length > 0) ||
+    terminalOutput.length > 0
 
   // Collapsed by default for a clean, scannable list; a click reveals details.
   // Settle time is stamped only on an observed transition, so history-loaded
@@ -460,12 +472,24 @@ function ToolCallCardComponent({
                 <ExternalLink />
               </IconActionButton>
             ) : null}
+            {generatorFeature(toolCall) ? (
+              <IconActionButton
+                label={`Open in ${FEATURE_LABELS[generatorFeature(toolCall) ?? ''] ?? 'Roblox'}`}
+                onClick={() => navigateToRoblox(generatorFeature(toolCall) ?? undefined)}
+                className={CHAT_ROW_ICON}
+              >
+                <ExternalLink />
+              </IconActionButton>
+            ) : null}
           </div>
+
           {hasDetail && !isSubagent && (
             <CollapseExpandMotion open={open} motion="chat">
               <div className="ml-4 flex flex-col gap-1.5 border-l border-border/50 px-2 pb-2 pt-1.5">
-                {detailItems.length > 0 ? (
-                  detailItems.map((item, i) => renderContentItem(item, i, language, stream))
+                {detailWithoutPictures.length > 0 ? (
+                  detailWithoutPictures.map((item, i) =>
+                    renderContentItem(item, i, language, stream)
+                  )
                 ) : resultText ? (
                   <ResultBlock text={resultText} language={language} />
                 ) : terminalOutput ? (

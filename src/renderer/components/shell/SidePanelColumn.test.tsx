@@ -26,6 +26,28 @@ vi.mock('./ChangesPanel', () => ({
   ChangesPanel: ({ cwd }: { cwd: string }) => <div data-testid="changes-panel" data-cwd={cwd} />
 }))
 
+vi.mock('@/lib/artifact-records', async () => {
+  const actual =
+    await vi.importActual<typeof import('@/lib/artifact-records')>('@/lib/artifact-records')
+  return {
+    ...actual,
+    loadArtifactRecords: vi.fn(async () => [
+      {
+        slug: 'royal-robe',
+        kind: 'shirt',
+        current: 1,
+        createdAt: 1,
+        updatedAt: 1,
+        dir: '/repo/.termul/generated/shirt/royal-robe',
+        itemPath: '/repo/.termul/generated/shirt/royal-robe/item.json',
+        versions: [{ n: 1, at: 1, prompt: 'royal robe', ok: true, atlas: 'v1.png' }]
+      }
+    ]),
+    readAtlasDataUrl: vi.fn(async () => null),
+    readStillDataUrl: vi.fn(async () => null)
+  }
+})
+
 const mocks = vi.hoisted(() => ({ showAgentLauncher: vi.fn() }))
 
 const makeProject = (overrides: Partial<Project> = {}): Project =>
@@ -78,14 +100,15 @@ beforeEach(() => {
 })
 
 describe('SidePanelColumn', () => {
-  it('renders the header, the three tabs and the Chats list by default', () => {
+  it('renders the header, the four tabs and the Chats list by default', () => {
     renderPanel(makeProject())
     expect(screen.getByTestId('workspace-switcher')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'New chat' })).toBeInTheDocument()
     expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual([
       'Chats',
       'Explorer',
-      'Changes'
+      'Changes',
+      'Roblox'
     ])
     expect(screen.getByRole('tab', { name: 'Chats' })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByLabelText('Search chats')).toBeInTheDocument()
@@ -167,6 +190,22 @@ describe('SidePanelColumn', () => {
     renderPanel(makeProject())
     fireEvent.click(screen.getByRole('tab', { name: /Changes/ }))
     expect(screen.getByTestId('changes-panel')).toHaveAttribute('data-cwd', '/repo')
+  })
+
+  it('renders the garment collection in the Roblox tab', async () => {
+    renderPanel(makeProject())
+    fireEvent.click(screen.getByRole('tab', { name: 'Roblox' }))
+
+    expect(useShellLayoutStore.getState().lastColumnTabByProject.p1).toBe('roblox')
+    expect(await screen.findByRole('list', { name: 'Collection' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Clothing/ })).toBeInTheDocument()
+  })
+
+  it('asks for a project in the Roblox tab when the project has no path', async () => {
+    renderPanel(makeProject({ path: undefined }))
+    fireEvent.click(screen.getByRole('tab', { name: 'Roblox' }))
+
+    expect(await screen.findByText(/Open a project first/)).toBeInTheDocument()
   })
 
   it('sizes the column from the store and exposes a resize separator', () => {
@@ -260,16 +299,24 @@ describe('SidePanelColumn', () => {
       expect(header().style.paddingLeft).toBe('')
     })
 
-    it('hides the Column tabs while the Rail is collapsed and labels the tabpanel by name', () => {
+    it('keeps the Column tabs while the Rail is collapsed and labels the tabpanel by tab', () => {
       useShellLayoutStore.setState({ railExpanded: false })
       renderOn(null)
-      expect(screen.queryByRole('tablist')).toBeNull()
+      expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
+        'Chats',
+        'Explorer',
+        'Changes',
+        'Roblox'
+      ])
       const panel = screen.getByRole('tabpanel')
-      expect(panel).toHaveAttribute('aria-label', 'Chats')
-      expect(panel).not.toHaveAttribute('aria-labelledby')
+      expect(panel).toHaveAttribute('aria-labelledby', 'side-panel-tab-chats')
+      expect(panel).not.toHaveAttribute('aria-label')
 
       act(() => useShellLayoutStore.getState().setLastColumnTab('p1', 'changes'))
-      expect(screen.getByRole('tabpanel')).toHaveAttribute('aria-label', 'Changes')
+      expect(screen.getByRole('tabpanel')).toHaveAttribute(
+        'aria-labelledby',
+        'side-panel-tab-changes'
+      )
     })
 
     it('keeps aria-labelledby on the tabpanel while the Rail is expanded', () => {

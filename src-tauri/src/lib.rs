@@ -2057,6 +2057,8 @@ pub fn run() {
             commands::git_branch_switch,
             // Project icon resolution (local file scan → git-remote fetch)
             commands::project_icon_resolve,
+            // Write a finished artifact the user asked for from a feature page
+            commands::save_artifact,
             // Secure storage commands
             secure_storage::secure_storage_set,
             secure_storage::secure_storage_get,

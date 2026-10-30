@@ -1,6 +1,6 @@
 ﻿import { describe, expect, it } from 'vitest'
 import { regionsFor } from '../../layout'
-import { rectUvs, segmentRect } from '../avatar'
+import { buildAvatar, rectUvs, segmentRect } from '../avatar'
 import { POSES, poseJoints, r6Name, rigParts } from '../rig'
 
 describe('rig', () => {
@@ -87,5 +87,47 @@ describe('segmentRect', () => {
 
   it('answers null for a face the garment does not have', () => {
     expect(segmentRect([], 'front', 0, 1)).toBeNull()
+  })
+})
+
+function meshNames(avatar: ReturnType<typeof buildAvatar>): string[] {
+  const names: string[] = []
+  avatar.group.traverse((object) => {
+    if (object.name) names.push(object.name)
+  })
+  return names
+}
+
+describe('wearing several garments at once', () => {
+  it('puts a shirt on the torso and arms', () => {
+    const avatar = buildAvatar({ clothes: { shirt: document.createElement('canvas') } })
+    const names = meshNames(avatar)
+    expect(names).toContain('UpperTorso')
+    expect(names.some((name) => name.startsWith('LeftUpperArm'))).toBe(true)
+  })
+
+  it('adds the t-shirt graphic on top instead of replacing the shirt', () => {
+    const avatar = buildAvatar({
+      clothes: {
+        shirt: document.createElement('canvas'),
+        tshirt: document.createElement('canvas')
+      }
+    })
+    expect(meshNames(avatar)).toContain('TShirtGraphic')
+  })
+
+  it('wears a t-shirt alone when no shirt is supplied', () => {
+    const avatar = buildAvatar({ clothes: { tshirt: document.createElement('canvas') } })
+    expect(meshNames(avatar)).toContain('TShirtGraphic')
+  })
+
+  it('wears a shirt without a graphic when no t-shirt is supplied', () => {
+    const avatar = buildAvatar({ clothes: { shirt: document.createElement('canvas') } })
+    expect(meshNames(avatar)).not.toContain('TShirtGraphic')
+  })
+
+  it('dresses the legs from the pants atlas', () => {
+    const avatar = buildAvatar({ clothes: { pants: document.createElement('canvas') } })
+    expect(meshNames(avatar).some((name) => name.startsWith('LeftUpperLeg'))).toBe(true)
   })
 })

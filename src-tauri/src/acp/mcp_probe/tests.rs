@@ -132,6 +132,32 @@ fn resolve_stdio_command_rewrites_windows_cmd_shim() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+#[test]
+fn a_registry_command_that_is_not_a_token_is_left_literal() {
+    let (program, prepend_args) = resolve_stdio_command("this-binary-does-not-exist-12345");
+
+    assert_eq!(program, "this-binary-does-not-exist-12345");
+    assert!(prepend_args.is_empty());
+}
+
+#[tokio::test]
+async fn the_studio_token_spawns_the_exe_it_resolves_to() {
+    let dir = std::env::temp_dir().join(format!("termul-test-mcp-token-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let stub = dir.join("StudioMCP.exe");
+    std::fs::write(&stub, b"MZ").unwrap();
+
+    let (program, prepend_args) = resolve_stdio_command_with(
+        crate::roblox::STUDIO_MCP_COMMAND_TOKEN,
+        Some(stub.clone()),
+    );
+    assert_eq!(program, stub.to_string_lossy());
+    assert!(prepend_args.is_empty());
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 #[tokio::test]
 async fn unreachable_http_url_returns_disconnected() {
     // A port nothing listens on → connect failure → disconnected. The error

@@ -11,6 +11,7 @@ import {
   skillToken
 } from '@/lib/skill-tokens'
 import type { ChatMessage as ChatMessageType } from '@/stores/acp-store'
+import { useLiveArtifactStore } from '@/stores/live-artifact-store'
 import { ChatMessage } from './ChatMessage'
 
 const T = skillToken
@@ -784,5 +785,47 @@ describe('ChatMessage', () => {
         vi.useRealTimers()
       }
     })
+  })
+})
+
+describe('ChatMessage live artifact picture', () => {
+  const PNG = 'data:image/png;base64,AAAA'
+
+  beforeEach(() => {
+    useLiveArtifactStore.getState().clear()
+  })
+
+  it('renders the picture the session just generated, inside the reply bubble', () => {
+    useLiveArtifactStore.getState().show('s-1', 't-1', PNG)
+    const { container } = render(<ChatMessage message={agentMessage(false)} sessionId="s-1" />)
+    const picture = container.querySelector(`img[src="${PNG}"]`)
+    expect(picture).not.toBeNull()
+    expect(picture?.closest('[data-slot="bubble"]') ?? picture?.parentElement).not.toBeNull()
+  })
+
+  it('shows a reply that has no text at all when it carries a picture', () => {
+    useLiveArtifactStore.getState().show('s-1', 't-1', PNG)
+    const empty: ChatMessageType = {
+      id: 'agent-empty',
+      role: 'agent',
+      blocks: [],
+      streaming: false,
+      timestamp: 0
+    }
+    const { container } = render(<ChatMessage message={empty} sessionId="s-1" />)
+    expect(container.querySelector(`img[src="${PNG}"]`)).not.toBeNull()
+  })
+
+  it('leaves the picture out when the transcript already carries one', () => {
+    useLiveArtifactStore.getState().show('s-1', 't-1', PNG)
+    const withMedia: ChatMessageType = {
+      id: 'agent-media',
+      role: 'agent',
+      blocks: [{ type: 'image', data: 'BBBB', mimeType: 'image/png' }],
+      streaming: false,
+      timestamp: 0
+    }
+    const { container } = render(<ChatMessage message={withMedia} sessionId="s-1" />)
+    expect(container.querySelector(`img[src="${PNG}"]`)).toBeNull()
   })
 })

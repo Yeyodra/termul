@@ -51,7 +51,6 @@ export function serializePaneTree(node: PaneNode): PersistedPaneNode {
               ...(tab.oldPath ? { oldPath: tab.oldPath } : {})
             }
           ]
-        case 'artifact':
         case 'canvas':
           // Not persisted (see WORKSPACE_TAB_KIND_TRAITS): the canvas re-opens
           // user-initiated.
@@ -225,7 +224,6 @@ export function reconcileTerminalTabs(
           case 'diff':
           case 'commit-diff':
             return [tab]
-          case 'artifact':
           case 'canvas':
             // Canvas tabs: the mount/iframe runtime is host-local state, never
             // portable across a restore — dropped here like every other

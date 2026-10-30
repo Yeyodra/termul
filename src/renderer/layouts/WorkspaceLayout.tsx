@@ -83,7 +83,8 @@ export default function WorkspaceLayout(): React.JSX.Element {
   // and an ACP session, neither of which exists in the MCP child.
   useEffect(() => {
     if (!activeProject?.path) return
-    return startGeneratorGateway({ cwd: activeProject.path })
+    const { stop } = startGeneratorGateway({ cwd: activeProject.path })
+    return stop
   }, [activeProject?.path])
   const { switchTo: switchProjectFromPalette } = useProjectSwitch('CommandPalette')
 

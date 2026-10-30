@@ -21,6 +21,13 @@
  *
  * The shirt texture covers torso and arms, the pants texture covers torso and
  * legs, composited skin -> pants -> shirt, which is why bare regions show skin.
+ *
+ * A T-shirt is not a substitute for a shirt: Roblox lets a player wear both, the
+ * graphic sitting on the chest over the shirt. It is a 512x512 picture of the
+ * torso front, so it is drawn as a second, slightly raised quad on top of the
+ * shirt rather than taking the shirt's slot. An earlier `clothes.shirt ??
+ * clothes.tshirt` collapsed the two into one slot, which silently discarded the
+ * graphic whenever a shirt was also worn.
  */
 
 import {
@@ -236,6 +243,15 @@ export interface Avatar {
   dispose(): void
 }
 
+/** The atlas as a GPU texture: nearest filtering keeps a 1px stripe a 1px stripe. */
+function textureFrom(canvas: HTMLCanvasElement): CanvasTexture {
+  const texture = new CanvasTexture(canvas)
+  texture.colorSpace = SRGBColorSpace
+  texture.magFilter = NearestFilter
+  texture.anisotropy = 4
+  return texture
+}
+
 /**
  * Build a rigged avatar wearing the supplied garment atlases.
  *
@@ -287,17 +303,14 @@ export function buildAvatar({
     joints[bone].add(mesh)
   }
 
-  const shirt = clothes.shirt ?? clothes.tshirt
+  const shirt = clothes.shirt
+  const tshirt = clothes.tshirt
   const pants = clothes.pants
 
   /** One material per garment slot, sharing the atlas texture. */
   const materialFor = (canvas: HTMLCanvasElement | undefined): MeshStandardMaterial => {
     if (!canvas) return new MeshStandardMaterial({ color: skin, roughness: 0.75 })
-    const texture = new CanvasTexture(canvas)
-    texture.colorSpace = SRGBColorSpace
-    texture.magFilter = NearestFilter
-    texture.anisotropy = 4
-    return new MeshStandardMaterial({ map: texture, roughness: 0.82 })
+    return new MeshStandardMaterial({ map: textureFrom(canvas), roughness: 0.82 })
   }
 
   const shirtMaterial = materialFor(shirt)
@@ -336,6 +349,28 @@ export function buildAvatar({
   head.name = 'Head'
   head.position.set(0, 4.62, 0)
   attach(head, 'Head')
+
+  /**
+   * The T-shirt graphic is a second quad in front of the torso, not a torso
+   * material: Roblox wears a T-shirt *over* a shirt, and its 512x512 sheet is
+   * one picture of the chest. `z` clears the torso's front face at 0.5 so the
+   * two do not z-fight, and `depthWrite: false` keeps the shirt behind it.
+   */
+  if (tshirt) {
+    const graphic = new Mesh(
+      new PlaneGeometry(1.6, 1.6),
+      new MeshStandardMaterial({
+        map: textureFrom(tshirt),
+        transparent: true,
+        roughness: 0.82,
+        depthWrite: false
+      })
+    )
+    graphic.name = 'TShirtGraphic'
+    graphic.position.set(0, 3.2, 0.52)
+    graphic.renderOrder = 1
+    attach(graphic, rig === 'R6' ? 'Torso' : 'UpperTorso')
+  }
 
   const face = new Mesh(
     new PlaneGeometry(0.9, 0.9),

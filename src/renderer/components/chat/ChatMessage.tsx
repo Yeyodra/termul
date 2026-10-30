@@ -2,7 +2,6 @@ import { motion, useReducedMotion } from 'framer-motion'
 import { memo, useEffect, useMemo, useState } from 'react'
 
 import { Attachment, AttachmentPreview, Attachments } from '@/components/ai-elements/attachments'
-import { TurnArtifacts } from '@/components/artifacts/TurnArtifacts'
 import { Bubble, BubbleContent } from '@/components/ui/bubble'
 import { ImageLightbox } from '@/components/ui/image-lightbox'
 import { Message, MessageContent } from '@/components/ui/message'
@@ -20,6 +19,7 @@ import {
 import { normalizePlanFenceBoundary, stripEmptyFences } from '@/lib/strip-empty-fences'
 import { cn } from '@/lib/utils'
 import type { ChatMessage as ChatMessageType } from '@/stores/acp-store'
+import { useLatestLivePicture } from '@/stores/live-artifact-store'
 import { AgentProse } from './chat-agent-prose'
 import {
   blockData,
@@ -163,7 +163,15 @@ function blockIsImage(block: ContentBlock): boolean {
 }
 
 /** A single media block rendered as an AI Elements grid attachment. */
-function MediaGridItem({ block, id }: { block: ContentBlock; id: string }): React.JSX.Element {
+function MediaGridItem({
+  block,
+  id,
+  large = false
+}: {
+  block: ContentBlock
+  id: string
+  large?: boolean
+}): React.JSX.Element {
   const initial = useMemo(() => blockToAttachmentData(block, id), [block, id])
   const [data, setData] = useState(initial)
   const name = blockDisplayName(block)
@@ -194,6 +202,20 @@ function MediaGridItem({ block, id }: { block: ContentBlock; id: string }): Reac
       cancelled = true
     }
   }, [initial.url, block])
+
+  if (inlineImage && large) {
+    return (
+      <ImageLightbox src={data.url ?? ''} alt={name}>
+        <button type="button" className="block cursor-zoom-in bg-transparent p-0">
+          <img
+            src={data.url ?? ''}
+            alt={name}
+            className="max-h-[420px] max-w-full rounded-lg border border-border/60 object-contain"
+          />
+        </button>
+      </ImageLightbox>
+    )
+  }
 
   const attachment = (
     <Attachment data={data} title={name} className={inlineImage ? 'cursor-zoom-in' : undefined}>
@@ -260,7 +282,13 @@ function InlineAudio({ block }: { block: ContentBlock }): React.JSX.Element | nu
 }
 
 /** Render media blocks with safe inline previews and bounded embedded text. */
-export function MediaBlocks({ blocks }: { blocks: ContentBlock[] }): React.JSX.Element | null {
+export function MediaBlocks({
+  blocks,
+  large = false
+}: {
+  blocks: ContentBlock[]
+  large?: boolean
+}): React.JSX.Element | null {
   const media = mediaBlocks(blocks)
   if (media.length === 0) return null
   const resources = media.filter((block) => block.type === 'resource')
@@ -273,9 +301,14 @@ export function MediaBlocks({ blocks }: { blocks: ContentBlock[] }): React.JSX.E
   return (
     <>
       {attachments.length > 0 && (
-        <Attachments variant="grid" className="ml-0 w-fit py-0.5">
+        <Attachments variant="grid" className={cn('ml-0 py-0.5', !large && 'w-fit')}>
           {attachments.map((block, i) => (
-            <MediaGridItem key={`${block.type}-${i}`} block={block} id={`${block.type}-${i}`} />
+            <MediaGridItem
+              key={`${block.type}-${i}`}
+              block={block}
+              id={`${block.type}-${i}`}
+              large={large}
+            />
           ))}
         </Attachments>
       )}
@@ -340,6 +373,8 @@ interface ChatMessageProps {
   onRetry?: () => void
   /** Filesystem roots used for safe file-path links in agent prose. */
   filePathContext?: FilePathResolutionContext
+  /** Session the message belongs to, for the live artifact picture. */
+  sessionId?: string
 }
 
 /** The same inset focus ring as `ToolCallCard`, for a focusable message. */
@@ -387,10 +422,12 @@ function ChatMessageComponent({
   animateEnter = true,
   onEdit,
   onRetry,
-  filePathContext
+  filePathContext,
+  sessionId
 }: ChatMessageProps): React.JSX.Element {
   const reduced = useReducedMotion() ?? false
   const isMobileShell = useMobileWebShell()
+  const livePicture = useLatestLivePicture(sessionId)
 
   const isUser = message.role === 'user'
   const text = blocksToText(message.blocks)
@@ -499,7 +536,8 @@ function ChatMessageComponent({
   const streaming = message.streaming && isLast
   const proseText = normalizePlanFenceBoundary(stripEmptyFences(text, streaming))
   const proseDelay = nextDelay()
-  const mediaDelay = hasMedia ? nextDelay() : null
+  const pictureDelay = hasMedia || livePicture != null ? nextDelay() : null
+  const mediaDelay = hasMedia ? pictureDelay : null
   const actionsDelay = nextDelay()
   const agentCopyText = turnText ?? text
 
@@ -517,7 +555,7 @@ function ChatMessageComponent({
             so they don't render a blank shell above the media grid. The
             streaming caret still needs a bubble to live in while the turn is
             in progress, even before any text has arrived. */}
-        {(proseText.length > 0 || streaming) && (
+        {(proseText.length > 0 || streaming || livePicture != null) && (
           <Bubble variant="ghost" className="w-full">
             <BubbleContent>
               <StaggerSection
@@ -541,6 +579,24 @@ function ChatMessageComponent({
                   />
                 )}
               </StaggerSection>
+              {!hasMedia && livePicture != null && (
+                <StaggerSection
+                  delay={pictureDelay ?? proseDelay}
+                  align="start"
+                  reduced={reduced}
+                  animateEnter={animateEnter}
+                >
+                  <ImageLightbox src={livePicture} alt="Generated artifact">
+                    <button type="button" className="block cursor-zoom-in bg-transparent p-0">
+                      <img
+                        src={livePicture}
+                        alt="Generated artifact"
+                        className="max-h-[420px] max-w-full rounded-lg border border-border/60 object-contain"
+                      />
+                    </button>
+                  </ImageLightbox>
+                </StaggerSection>
+              )}
             </BubbleContent>
           </Bubble>
         )}
@@ -551,17 +607,7 @@ function ChatMessageComponent({
             reduced={reduced}
             animateEnter={animateEnter}
           >
-            <MediaBlocks blocks={message.blocks} />
-          </StaggerSection>
-        )}
-        {isTurnTail && (
-          <StaggerSection
-            delay={actionsDelay}
-            align="start"
-            reduced={reduced}
-            animateEnter={animateEnter}
-          >
-            <TurnArtifacts live />
+            <MediaBlocks blocks={message.blocks} large />
           </StaggerSection>
         )}
         {hasActions && (

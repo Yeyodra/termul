@@ -13,8 +13,14 @@
  */
 export const SHELL_LAYOUT_VERSION = 2
 
-/** Tabs the Side panel remembers per project. SSH is a mode, never a last tab. */
-export const SHELL_LAST_COLUMN_TABS = ['chats', 'explorer', 'changes'] as const
+/**
+ * Tabs the Side panel remembers per project. SSH is a mode, never a last tab.
+ *
+ * `roblox` is the collection of generated artifacts: it lives in the Side panel
+ * rather than in its own sidebar so the page keeps the whole middle column for
+ * the viewport (D2).
+ */
+export const SHELL_LAST_COLUMN_TABS = ['chats', 'explorer', 'changes', 'roblox'] as const
 export type ShellLastColumnTab = (typeof SHELL_LAST_COLUMN_TABS)[number]
 
 export interface ShellLayoutBounds {

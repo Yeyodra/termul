@@ -40,11 +40,6 @@ const BrowserPanel = lazy(() =>
 const CanvasPanel = lazy(() =>
   import('@/components/canvas/CanvasPanel').then((m) => ({ default: m.CanvasPanel }))
 )
-const ArtifactViewportPanel = lazy(() =>
-  import('@/components/artifacts/ArtifactViewportPanel').then((m) => ({
-    default: m.ArtifactViewportPanel
-  }))
-)
 const ConnectedTerminal = lazy(() =>
   import('@/components/terminal/ConnectedTerminal').then((m) => ({ default: m.ConnectedTerminal }))
 )
@@ -472,22 +467,6 @@ export function PaneContent({
                         docPath={tab.docPath}
                         isVisible={isVisible}
                       />
-                    </Suspense>
-                  </div>
-                )
-              })}
-
-            {pane.tabs
-              .filter((t): t is WorkspaceTab & { type: 'artifact' } => t.type === 'artifact')
-              .map((tab) => {
-                const isVisible = visibleTabId === tab.id
-                return (
-                  <div
-                    key={tab.id}
-                    className={isVisible ? 'w-full h-full' : INACTIVE_TAB_PANE_CLASS}
-                  >
-                    <Suspense fallback={<PaneSkeleton />}>
-                      <ArtifactViewportPanel />
                     </Suspense>
                   </div>
                 )

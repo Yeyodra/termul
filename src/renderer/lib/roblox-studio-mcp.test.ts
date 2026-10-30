@@ -16,7 +16,9 @@ import {
   ensureRobloxProject,
   ensureRobloxStudioMcp,
   ROBLOX_PROJECT_NAME,
+  ROBLOX_STUDIO_MCP_COMMAND,
   ROBLOX_STUDIO_MCP_ID,
+  robloxRegistryAction,
   robloxStudioEntry
 } from './roblox-studio-mcp'
 
@@ -41,16 +43,18 @@ describe('roblox studio MCP registry entry', () => {
     vi.restoreAllMocks()
   })
 
-  it('builds a stdio entry with the schema-required empty args and env', () => {
-    expect(robloxStudioEntry(EXE)).toEqual({
+  it('stores the stable token instead of a version-specific path', () => {
+    expect(robloxStudioEntry()).toEqual({
       id: ROBLOX_STUDIO_MCP_ID,
       type: 'stdio',
       name: 'roblox-studio',
-      command: EXE,
+      command: ROBLOX_STUDIO_MCP_COMMAND,
       args: [],
       env: [],
       enabled: true
     })
+    // A stored path would go stale on the next Roblox update.
+    expect(robloxStudioEntry().command).not.toContain('Versions')
   })
 
   it('returns null and warns when Studio is not installed', async () => {
@@ -73,28 +77,90 @@ describe('roblox studio MCP registry entry', () => {
     mockedGetState.mockReturnValue(stateWith({ saveMcpServer }) as never)
 
     expect(await ensureRobloxStudioMcp()).toBe(EXE)
-    expect(saveMcpServer).toHaveBeenCalledWith(robloxStudioEntry(EXE))
+    expect(saveMcpServer).toHaveBeenCalledWith(robloxStudioEntry())
   })
 
-  it('rewrites the entry when Roblox updated to a new version directory', async () => {
+  it('repairs an entry left holding a stale absolute path', async () => {
+    // Written by an earlier build: the version directory it names is gone, so
+    // the spawn fails and the badge reads Unreachable until this rewrites it.
     const saveMcpServer = vi.fn().mockResolvedValue(undefined)
-    const stale = robloxStudioEntry('C:/Roblox/Versions/version-old/StudioMCP.exe')
+    const stale = {
+      ...robloxStudioEntry(),
+      command: 'C:/Roblox/Versions/version-old/StudioMCP.exe'
+    }
     mockedStudioPath.mockResolvedValue({ success: true, data: { found: true, exePath: EXE } })
     mockedGetState.mockReturnValue(stateWith({ mcpServers: [stale], saveMcpServer }) as never)
 
     expect(await ensureRobloxStudioMcp()).toBe(EXE)
-    expect(saveMcpServer).toHaveBeenCalledWith(robloxStudioEntry(EXE))
+    expect(saveMcpServer).toHaveBeenCalledWith(robloxStudioEntry())
   })
 
-  it('leaves an up-to-date entry untouched', async () => {
+  it('leaves an up-to-date entry untouched after a Roblox update moved the exe', async () => {
     const saveMcpServer = vi.fn().mockResolvedValue(undefined)
     mockedStudioPath.mockResolvedValue({ success: true, data: { found: true, exePath: EXE } })
     mockedGetState.mockReturnValue(
-      stateWith({ mcpServers: [robloxStudioEntry(EXE)], saveMcpServer }) as never
+      stateWith({ mcpServers: [robloxStudioEntry()], saveMcpServer }) as never
     )
 
     expect(await ensureRobloxStudioMcp()).toBe(EXE)
     expect(saveMcpServer).not.toHaveBeenCalled()
+  })
+
+  it('rewrites a disabled entry so the bridge comes back', async () => {
+    const saveMcpServer = vi.fn().mockResolvedValue(undefined)
+    const disabled = { ...robloxStudioEntry(), enabled: false }
+    mockedStudioPath.mockResolvedValue({ success: true, data: { found: true, exePath: EXE } })
+    mockedGetState.mockReturnValue(stateWith({ mcpServers: [disabled], saveMcpServer }) as never)
+
+    expect(await ensureRobloxStudioMcp()).toBe(EXE)
+    expect(saveMcpServer).toHaveBeenCalledWith(robloxStudioEntry())
+  })
+})
+
+describe('roblox registry reconcile decision', () => {
+  const stalePath = {
+    ...robloxStudioEntry(),
+    command: 'C:/Roblox/Versions/version-old/StudioMCP.exe'
+  }
+
+  it('seeds the entry on a machine with Studio and an empty registry', () => {
+    expect(robloxRegistryAction([], true, false)).toBe('add')
+  })
+
+  it('never seeds on a machine without Studio', () => {
+    expect(robloxRegistryAction([], false, false)).toBe('none')
+  })
+
+  it('honours a deletion the user made on purpose', () => {
+    expect(robloxRegistryAction([], true, true)).toBe('none')
+  })
+
+  it('repairs an entry that still holds an absolute path', () => {
+    expect(robloxRegistryAction([stalePath], true, false)).toBe('upgrade')
+  })
+
+  it('repairs a stale path even after the user opted out once', () => {
+    // Opt-out only stops seeding a missing entry; an existing broken entry is
+    // still worth fixing, otherwise the badge stays red forever.
+    expect(robloxRegistryAction([stalePath], true, true)).toBe('upgrade')
+  })
+
+  it('leaves a correct token entry untouched after Roblox updates', () => {
+    expect(robloxRegistryAction([robloxStudioEntry()], true, false)).toBe('none')
+    expect(robloxRegistryAction([robloxStudioEntry()], true, true)).toBe('none')
+  })
+
+  it('leaves other servers and non-stdio entries alone', () => {
+    const other = { ...robloxStudioEntry(), id: 'dokploy', name: 'dokploy', command: 'npx' }
+    const http = {
+      id: ROBLOX_STUDIO_MCP_ID,
+      type: 'http' as const,
+      name: 'roblox-studio',
+      url: 'http://x'
+    }
+
+    expect(robloxRegistryAction([other], true, false)).toBe('add')
+    expect(robloxRegistryAction([http as never], true, false)).toBe('none')
   })
 })
 

@@ -22,6 +22,11 @@ export function navigateToChatSession(sessionId: string): void {
   }
 }
 
+export function navigateToRoblox(feature = 'clothing'): void {
+  if (!navigateFn) return
+  if (!window.location.hash.startsWith('#/roblox')) navigateFn(`/roblox/${feature}`)
+}
+
 /**
  * Leave the chat route. With `sessionId`, only when the URL still names that
  * session — a caller acting on a stale route (router updates run in a

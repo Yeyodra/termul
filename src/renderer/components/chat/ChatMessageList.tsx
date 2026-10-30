@@ -247,6 +247,7 @@ function VirtualizedTimeline({
         onEdit={onEditMessage}
         onRetry={onRetry}
         filePathContext={filePathContext}
+        sessionId={sessionId}
       />
     )
   }

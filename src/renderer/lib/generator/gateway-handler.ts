@@ -12,30 +12,11 @@ import type { GeneratorCall, GeneratorReply } from '@/lib/acp-transport/generato
 import type { TaskQueue } from '@/lib/generator/task-queue'
 import {
   type ClothingToolDeps,
-  type GenerateClothingResult,
   queueGenerateClothing,
   readClothingResult
 } from '@/lib/generator/tools/generate-clothing'
-import { useArtifactStore } from '@/stores/artifact-store'
-
-/**
- * Hand a finished garment to the viewport.
- *
- * Published from the poll, not from the generation: the artifact is only ready
- * when the engine says so, and a chat that never polls never showed it.
- */
-function publishClothingArtifact(result: GenerateClothingResult): void {
-  if (!result.atlas || !result.kind) return
-  useArtifactStore.getState().publish(
-    {
-      kind: 'clothing',
-      type: result.kind,
-      atlas: result.atlas,
-      name: result.name
-    },
-    result.image
-  )
-}
+import { useLiveArtifactStore } from '@/stores/live-artifact-store'
+import { refreshLoadedProjects } from '@/stores/roblox-records-store'
 
 /** Which engine each tool family needs, for the refusal message. */
 const UNAVAILABLE = new Set([
@@ -125,6 +106,9 @@ async function dispatch(deps: GeneratorHandlerDeps, call: GeneratorCall): Promis
       type,
       prompt: typeof args.prompt === 'string' ? args.prompt : undefined,
       design: spec,
+      // How an agent revises a garment instead of making a second one. Without
+      // it, "change the colour" produced a new record with an empty history.
+      recordSlug: typeof args.record_slug === 'string' ? args.record_slug : undefined,
       agentId: call.agentId,
       sessionId: call.sessionId
     })
@@ -142,7 +126,10 @@ async function dispatch(deps: GeneratorHandlerDeps, call: GeneratorCall): Promis
       }
     }
     const result = readClothingResult(deps.queue, taskId)
-    if (result.status === 'done') publishClothingArtifact(result)
+    if (result.status === 'done' && result.image) {
+      useLiveArtifactStore.getState().show(call.sessionId, taskId, result.image)
+      refreshLoadedProjects()
+    }
     return {
       callId: call.callId,
       ok: true,

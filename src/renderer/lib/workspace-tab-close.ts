@@ -37,7 +37,6 @@ const TAB_CLOSE: { [K in WorkspaceTabKind]: TabCloser<K> } = {
   'git-history': removeTab,
   diff: removeTab,
   'commit-diff': removeTab,
-  artifact: removeTab,
   'agent-chat': (tab) => {
     closeAgentChat(tab.sessionId, () => {
       useWorkspaceStore.getState().removeTab(tab.id)
