@@ -50,6 +50,23 @@ export {
 } from './check'
 export { DOG_EXAMPLE, R15_HERO_EXAMPLE } from './examples'
 export {
+  ATLAS_SIZE,
+  describeExport,
+  encodePng,
+  exportFiles,
+  type FlatStream,
+  flatten,
+  type ObjFiles,
+  palettePixels,
+  palettePng,
+  paletteUv,
+  parseHexColor,
+  sanitizeName,
+  shouldMerge,
+  toGlb,
+  toObj
+} from './export'
+export {
   EXPR_FUNCTION_NAMES,
   EXPR_FUNCTIONS,
   evaluate,

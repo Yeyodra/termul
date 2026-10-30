@@ -99,12 +99,25 @@ export interface PartGroup {
  * `merge` path, which Termul does not need: `merge` only decides whether the
  * export collapses groups into one part, and that is `export`'s business.
  */
-export function partGroups(model: Model): PartGroup[] {
+export function partGroups(model: Model, { merge = false }: { merge?: boolean } = {}): PartGroup[] {
   const box = new THREE.Box3()
   const groups: PartGroup[] = []
 
-  for (const group of model.groups) {
-    const parts = model.parts.filter((part) => part.node === group.node)
+  // A merged export collapses every part into one group, which is what
+  // `partGroups({merge})` does in the original (`model-C3l0LP6n.js:737-755`):
+  // `this.groups?.length && !merge ? this.groups : [<one group>]`.
+  const sources =
+    merge || !model.groups.length
+      ? [{ node: null as number | null, name: model.name, pivot: [0, 0, 0] }]
+      : model.groups.map((group) => ({
+          node: group.node as number | null,
+          name: group.name,
+          pivot: group.pivot
+        }))
+
+  for (const group of sources) {
+    const parts =
+      group.node === null ? model.parts : model.parts.filter((part) => part.node === group.node)
     if (!parts.length) continue
 
     box.makeEmpty()
