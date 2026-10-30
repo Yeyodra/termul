@@ -28,6 +28,27 @@ export {
   signedVolume
 } from './build'
 export {
+  ACCESSORY_BOUNDS,
+  ATTACHMENT_OFFSETS,
+  type CategoryReport,
+  checkModel,
+  checkRigBounds,
+  HEAVY_TRIANGLES,
+  LARGE_SURFACE,
+  MESH_TRIANGLE_LIMIT,
+  NEAR_LIMIT_TRIANGLES,
+  openShellIssues,
+  oppositeSide,
+  type PartGroup,
+  partGroups,
+  type RuleIssue,
+  rigJoints,
+  TEXTURE_LIMIT,
+  TRIANGLE_LIMIT,
+  textureDetailIssues,
+  validateAccessory
+} from './check'
+export {
   EXPR_FUNCTION_NAMES,
   EXPR_FUNCTIONS,
   evaluate,
