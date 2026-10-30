@@ -123,3 +123,28 @@ export {
   sheetLayout,
   TILE
 } from './sheet'
+export {
+  assembleLuau,
+  assembleRigLuau,
+  describeSend,
+  insertLuau,
+  jointsFor,
+  modelClips,
+  partsForStudio,
+  poseAt,
+  rigForStudio,
+  rigRoot,
+  rootPartOf,
+  STUDIO_ACCESSORY_TYPES,
+  type StudioClip,
+  type StudioJoint,
+  type StudioKeyframe,
+  type StudioPart,
+  StudioRejected,
+  type StudioRig,
+  type StudioSendResult,
+  StudioUnavailable,
+  type StudioUploader,
+  sendToStudio,
+  testWalk
+} from './studio'
