@@ -43,6 +43,12 @@ export interface OpenCloudStatus {
   configured: boolean
   /** Why it is not configured, when the reason is not simply "nothing saved". */
   reason: string | null
+  /**
+   * The numeric Roblox user id the key uploads under, or `null` when none was
+   * saved. An upload needs it, and it is not a secret: it is the number in a
+   * profile URL.
+   */
+  userId: string | null
 }
 
 /** What an Open Cloud upload produced. */
@@ -83,17 +89,18 @@ export function createRobloxApi(): {
   liveStatus: () => Promise<IpcResult<RobloxStudioLiveStatus>>
   placeKey: () => Promise<IpcResult<RobloxPlaceKey>>
   openCloudStatus: () => Promise<IpcResult<OpenCloudStatus>>
-  saveOpenCloudKey: (key: string) => Promise<IpcResult<OpenCloudStatus>>
+  saveOpenCloudKey: (key: string, userId?: string) => Promise<IpcResult<OpenCloudStatus>>
   clearOpenCloudKey: () => Promise<IpcResult<OpenCloudStatus>>
   uploadModel: (request: {
     glbBase64: string
     name: string
     description?: string
-    userId: string
     studioId: string
     luau: string
   }) => Promise<IpcResult<OpenCloudUpload>>
 } {
+  const OFF_DESKTOP: OpenCloudStatus = { configured: false, reason: null, userId: null }
+
   return {
     studioPath: async () => {
       if (!isTauriContext()) {
@@ -124,11 +131,11 @@ export function createRobloxApi(): {
     // error: there is nothing the renderer could do with one anyway.
     openCloudStatus: async () => {
       if (!isTauriContext()) {
-        return { success: true, data: { configured: false, reason: null } }
+        return { success: true, data: OFF_DESKTOP }
       }
       return invokeIpcWrapped<OpenCloudStatus>('roblox_opencloud_status')
     },
-    saveOpenCloudKey: async (key: string) => {
+    saveOpenCloudKey: async (key: string, userId?: string) => {
       if (!isTauriContext()) {
         return {
           success: false,
@@ -136,11 +143,11 @@ export function createRobloxApi(): {
           code: 'DESKTOP_ONLY'
         }
       }
-      return invokeIpcWrapped<OpenCloudStatus>('roblox_opencloud_save_key', { key })
+      return invokeIpcWrapped<OpenCloudStatus>('roblox_opencloud_save_key', { key, userId })
     },
     clearOpenCloudKey: async () => {
       if (!isTauriContext()) {
-        return { success: true, data: { configured: false, reason: null } }
+        return { success: true, data: OFF_DESKTOP }
       }
       return invokeIpcWrapped<OpenCloudStatus>('roblox_opencloud_clear_key')
     },
@@ -152,11 +159,12 @@ export function createRobloxApi(): {
           code: 'DESKTOP_ONLY'
         }
       }
+      // The creator is not passed: the host reads it from the keychain beside the
+      // key, so the two cannot disagree about whose account an asset belongs to.
       return invokeIpcWrapped<OpenCloudUpload>('roblox_upload_model', {
         glbBase64: request.glbBase64,
         name: request.name,
         description: request.description,
-        userId: request.userId,
         studioId: request.studioId,
         luau: request.luau
       })

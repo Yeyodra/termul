@@ -33,6 +33,9 @@ pub const OPERATION_BASE_URL: &str = "https://apis.roblox.com/cloud/v2/";
 
 /// The keychain account the user's Open Cloud key is stored under.
 pub const API_KEY_ACCOUNT: &str = "roblox.open-cloud.api-key";
+/// The Roblox user the assets are created under. Not a secret, but stored beside
+/// the key so the two cannot drift apart.
+pub const USER_ID_ACCOUNT: &str = "roblox.open-cloud.user-id";
 
 /// One multipart part: a name, an optional filename and content type, and bytes.
 pub struct Part<'a> {

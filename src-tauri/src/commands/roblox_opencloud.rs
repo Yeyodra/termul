@@ -18,7 +18,9 @@
 
 use super::IpcResult;
 use crate::acp::credentials;
-use crate::roblox::opencloud::{CreateAssetRequest, OpenCloudClient, API_KEY_ACCOUNT};
+use crate::roblox::opencloud::{
+    CreateAssetRequest, OpenCloudClient, API_KEY_ACCOUNT, USER_ID_ACCOUNT,
+};
 
 /// A key that is not UUID-shaped is not an Open Cloud key.
 ///
@@ -41,6 +43,26 @@ pub struct OpenCloudStatus {
     pub configured: bool,
     /// Why the answer is `false`, when it is not simply "nothing saved yet".
     pub reason: Option<String>,
+    /// The creator id the key uploads under, or `None` when it was never given.
+    ///
+    /// Not a secret, and the page needs it: an upload must name a creator, and
+    /// asking for it on every upload would mean the user typing a numeric id
+    /// they have no reason to memorise.
+    pub user_id: Option<String>,
+}
+
+/// The stored creator id, if one was saved.
+fn stored_user_id() -> Option<String> {
+    credentials::read_secret(USER_ID_ACCOUNT, "the stored Roblox user id is empty")
+        .ok()
+        .flatten()
+}
+
+/// A creator id is all digits. Roblox ids never contain anything else, and a
+/// pasted username is the mistake this catches.
+fn looks_like_user_id(value: &str) -> bool {
+    let trimmed = value.trim();
+    !trimmed.is_empty() && trimmed.len() <= 20 && trimmed.chars().all(|c| c.is_ascii_digit())
 }
 
 #[tauri::command]
@@ -49,21 +71,31 @@ pub fn roblox_opencloud_status() -> IpcResult<OpenCloudStatus> {
         Ok(Some(_)) => IpcResult::success(OpenCloudStatus {
             configured: true,
             reason: None,
+            user_id: stored_user_id(),
         }),
         Ok(None) => IpcResult::success(OpenCloudStatus {
             configured: false,
             reason: None,
+            user_id: stored_user_id(),
         }),
         Err(reason) => IpcResult::success(OpenCloudStatus {
             configured: false,
             reason: Some(reason),
+            user_id: stored_user_id(),
         }),
     }
 }
 
 /// Store an Open Cloud key, rejecting anything that cannot be one.
+///
+/// `user_id` is optional here so a user can save the key first and the creator
+/// second. An upload refuses without both, but refusing at save time would mean
+/// losing a key the user already has to hand.
 #[tauri::command]
-pub fn roblox_opencloud_save_key(key: String) -> IpcResult<OpenCloudStatus> {
+pub fn roblox_opencloud_save_key(
+    key: String,
+    user_id: Option<String>,
+) -> IpcResult<OpenCloudStatus> {
     if !looks_like_api_key(&key) {
         return IpcResult::error(
             "That does not look like an Open Cloud API key. It is a 36-character UUID from \
@@ -72,26 +104,56 @@ pub fn roblox_opencloud_save_key(key: String) -> IpcResult<OpenCloudStatus> {
         );
     }
 
-    match credentials::write_secret(
+    let creator = user_id.map(|value| value.trim().to_string());
+    if let Some(creator) = creator.as_deref() {
+        if !creator.is_empty() && !looks_like_user_id(creator) {
+            return IpcResult::error(
+                "A Roblox user id is all digits. Open your profile and copy the number from the \
+                 URL, not the username.",
+                "NOT_A_USER_ID",
+            );
+        }
+    }
+
+    if let Err(reason) = credentials::write_secret(
         API_KEY_ACCOUNT,
         key.trim(),
         "Could not save the Open Cloud key in the OS keychain",
         "Could not verify the Open Cloud key in the OS keychain",
     ) {
-        Ok(()) => IpcResult::success(OpenCloudStatus {
-            configured: true,
-            reason: None,
-        }),
-        Err(reason) => IpcResult::error(reason, "KEYCHAIN_WRITE_FAILED"),
+        return IpcResult::error(reason, "KEYCHAIN_WRITE_FAILED");
     }
+
+    // The creator is stored beside the key rather than in front of it, so a
+    // failed write here cannot leave a creator with no key to use it.
+    if let Some(creator) = creator.filter(|value| !value.is_empty()) {
+        if let Err(reason) = credentials::write_secret(
+            USER_ID_ACCOUNT,
+            &creator,
+            "Could not save the Roblox user id in the OS keychain",
+            "Could not verify the Roblox user id in the OS keychain",
+        ) {
+            return IpcResult::error(reason, "KEYCHAIN_WRITE_FAILED");
+        }
+    }
+
+    IpcResult::success(OpenCloudStatus {
+        configured: true,
+        reason: None,
+        user_id: stored_user_id(),
+    })
 }
 
 #[tauri::command]
 pub fn roblox_opencloud_clear_key() -> IpcResult<OpenCloudStatus> {
+    // The creator goes too: leaving it behind would attach the next key's uploads
+    // to the previous user's account.
+    let _ = credentials::delete_secret(USER_ID_ACCOUNT, "Could not remove the Roblox user id");
     match credentials::delete_secret(API_KEY_ACCOUNT, "Could not remove the Open Cloud key") {
         Ok(()) => IpcResult::success(OpenCloudStatus {
             configured: false,
             reason: None,
+            user_id: None,
         }),
         Err(reason) => IpcResult::error(reason, "KEYCHAIN_DELETE_FAILED"),
     }
@@ -115,15 +177,17 @@ pub struct UploadResult {
 /// the real id once Roblox has assigned one. The placeholder is a string rather
 /// than a pre-numbered id because the id does not exist until after the upload.
 ///
-/// `user_id` is the creator the asset belongs to. `studio_id` must be present
-/// before the upload starts, which is the same invariant the TypeScript path
-/// enforces: a missing place must not burn an upload.
+/// `studio_id` must be present before the upload starts, which is the same
+/// invariant the TypeScript path enforces: a missing place must not burn an
+/// upload.
+///
+/// The creator comes from the keychain rather than a parameter: it was saved
+/// beside the key, and taking it from the caller would let the two disagree.
 #[tauri::command]
 pub async fn roblox_upload_model(
     glb_base64: String,
     name: String,
     description: Option<String>,
-    user_id: String,
     studio_id: Option<String>,
     luau: String,
 ) -> Result<IpcResult<UploadResult>, String> {
@@ -146,6 +210,14 @@ pub async fn roblox_upload_model(
             ))
         }
         Err(reason) => return Ok(IpcResult::error(reason, "KEYCHAIN_READ_FAILED")),
+    };
+
+    let Some(user_id) = stored_user_id() else {
+        return Ok(IpcResult::error(
+            "No Roblox user id is saved, so Roblox does not know whose account the model belongs \
+             to. Save your numeric user id with the key.",
+            "NO_USER_ID",
+        ));
     };
 
     let bytes = match base64::engine::general_purpose::STANDARD.decode(glb_base64.as_bytes()) {
