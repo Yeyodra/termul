@@ -11,11 +11,21 @@
  * `isModelRecord` decides from the version's own file rather than `record.kind`,
  * because the host files a record under the generator folder.
  */
-import { render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+vi.mock('@/lib/tauri-roblox', () => ({
+  robloxApi: { openCloudStatus: vi.fn(), uploadModel: vi.fn() }
+}))
+
 import type { ArtifactRecord, RecordVersion } from '@/lib/artifact-records'
 import { isModelRecord } from '@/lib/artifact-records'
+import { R15_HERO_EXAMPLE } from '@/lib/generator/engines/3d/examples'
+import { robloxApi } from '@/lib/tauri-roblox'
 import { CLOTHING_TABS, MODEL_TABS, RobloxInspector, TABS } from './RobloxInspector'
+
+const mockedStatus = vi.mocked(robloxApi.openCloudStatus)
+const mockedUpload = vi.mocked(robloxApi.uploadModel)
 
 const record = (version: Partial<RecordVersion> & { n: number }): ArtifactRecord => ({
   slug: 'treasure-chest',
@@ -198,6 +208,129 @@ describe('the Use it tab, per kind', () => {
       <RobloxInspector record={clothes} version={clothes.versions[0]} paint={null} tab="Use it" />
     )
     expect(screen.getByRole('button', { name: 'Copy folder path' })).toBeInTheDocument()
+  })
+})
+
+describe('the upload button', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockedStatus.mockResolvedValue({
+      success: true,
+      data: { configured: true, reason: null, userId: '42' }
+    })
+    mockedUpload.mockResolvedValue({
+      success: true,
+      data: { assetId: 987, message: 'Inserted treasure-chest', recovery: null }
+    })
+  })
+
+  const uploadable = (): ArtifactRecord =>
+    record({ n: 1, model: 'v1.glb', design: R15_HERO_EXAMPLE })
+
+  const open = (active: ArtifactRecord, studioId?: string | null): void => {
+    render(
+      <RobloxInspector
+        record={active}
+        version={active.versions[0]}
+        paint={null}
+        tabs={MODEL_TABS}
+        tab="Use it"
+        studioId={studioId}
+      />
+    )
+  }
+
+  it('is offered on a model, because a model can be uploaded', () => {
+    open(uploadable(), 'studio-abc')
+    expect(screen.getByRole('button', { name: 'Upload to Roblox' })).toBeInTheDocument()
+  })
+
+  it('is not offered on a garment, which Roblox will not let an app publish', () => {
+    const active = garment()
+    render(
+      <RobloxInspector record={active} version={active.versions[0]} paint={null} tab="Use it" />
+    )
+    expect(screen.queryByRole('button', { name: 'Upload to Roblox' })).toBeNull()
+  })
+
+  it('says to open a place when none is open, instead of uploading into nothing', async () => {
+    open(uploadable(), null)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Upload to Roblox' }))
+
+    expect(await screen.findByText(/Open a place in Roblox Studio first/)).toBeInTheDocument()
+    expect(mockedUpload).not.toHaveBeenCalled()
+  })
+
+  it('names the missing key when none is saved', async () => {
+    mockedStatus.mockResolvedValue({
+      success: true,
+      data: { configured: false, reason: null, userId: null }
+    })
+    open(uploadable(), 'studio-abc')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Upload to Roblox' }))
+
+    expect(await screen.findByText(/No Open Cloud API key is saved/)).toBeInTheDocument()
+    expect(mockedUpload).not.toHaveBeenCalled()
+  })
+
+  it('uploads and reports the asset id it got back', async () => {
+    open(uploadable(), 'studio-abc')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Upload to Roblox' }))
+
+    expect(await screen.findByText(/Uploaded as asset 987/)).toBeInTheDocument()
+    expect(mockedUpload).toHaveBeenCalledTimes(1)
+    expect(mockedUpload.mock.calls[0]![0].studioId).toBe('studio-abc')
+  })
+
+  it('says the asset uploaded but the place did not load it, which is a recoverable state', async () => {
+    mockedUpload.mockResolvedValue({
+      success: true,
+      data: {
+        assetId: 987,
+        message: '',
+        recovery: 'Asset 987 uploaded, but the place did not load it.'
+      }
+    })
+    open(uploadable(), 'studio-abc')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Upload to Roblox' }))
+
+    expect(await screen.findByText(/did not load it/)).toBeInTheDocument()
+  })
+
+  it('reports a rejected upload rather than failing silently', async () => {
+    mockedUpload.mockResolvedValue({
+      success: false,
+      error: 'Roblox rejected the key.',
+      code: 'OPENCLOUD_UNAUTHORIZED'
+    })
+    open(uploadable(), 'studio-abc')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Upload to Roblox' }))
+
+    expect(await screen.findByText('Roblox rejected the key.')).toBeInTheDocument()
+  })
+
+  it('will not upload a version whose spec was never kept', async () => {
+    open(record({ n: 1, model: 'v1.glb', design: null }), 'studio-abc')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Upload to Roblox' }))
+
+    expect(await screen.findByText(/cannot be rebuilt/)).toBeInTheDocument()
+    expect(mockedUpload).not.toHaveBeenCalled()
+  })
+
+  it('does not leave the button disabled once an attempt has finished', async () => {
+    open(uploadable(), 'studio-abc')
+    const button = screen.getByRole('button', { name: 'Upload to Roblox' })
+
+    fireEvent.click(button)
+
+    await waitFor(() => expect(screen.getByText(/Uploaded as asset 987/)).toBeInTheDocument())
+    expect(screen.getByRole('button', { name: 'Upload to Roblox' })).toBeEnabled()
   })
 })
 

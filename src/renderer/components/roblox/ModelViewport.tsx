@@ -12,6 +12,7 @@
  */
 
 import { useEffect, useMemo } from 'react'
+import { useRobloxStudioStatus } from '@/hooks/use-roblox-studio-status'
 import { type ArtifactRecord, currentVersion, restoreVersion } from '@/lib/artifact-records'
 import { ArtifactViewportPanel } from '@/lib/generator/viewport/ArtifactViewportPanel'
 import type { MeshArtifact } from '@/lib/generator/viewport/artifact'
@@ -32,6 +33,9 @@ export function ModelViewport({ projectPath }: ModelViewportProps): React.JSX.El
   const picked = usePickedSlug(projectPath)
   const load = useRobloxRecordsStore((state) => state.load)
   const refresh = useRobloxRecordsStore((state) => state.refresh)
+  // The upload needs the open place's handle, and the same poll that feeds the
+  // status-bar lamp already knows it.
+  const studio = useRobloxStudioStatus({ enabled: true })
 
   useEffect(() => {
     load(projectPath)
@@ -130,6 +134,7 @@ export function ModelViewport({ projectPath }: ModelViewportProps): React.JSX.El
         onRestore={handleRestore}
         tabs={MODEL_TABS}
         emptyHint="Generate a model, then pick it in the Roblox panel to inspect it."
+        studioId={studio?.studioId ?? null}
       />
     </div>
   )

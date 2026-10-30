@@ -30,6 +30,7 @@ import {
 } from '@/lib/artifact-records'
 import { type PaintReport, versionFacts } from '@/lib/roblox-inspector'
 import { recordPath } from '@/lib/roblox-record-path'
+import { uploadModelRecord, uploadReadiness } from '@/lib/roblox-upload'
 import { cn } from '@/lib/utils'
 
 /** The clothing tabs, which is what an existing caller gets. */
@@ -384,12 +385,45 @@ function ModelChecks({ version }: { version: RecordVersion }): React.JSX.Element
   )
 }
 
-function UseIt({ record }: { record: ArtifactRecord | null }): React.JSX.Element {
+function UseIt({
+  record,
+  studioId
+}: {
+  record: ArtifactRecord | null
+  /** The open place's MCP handle, or `null` when no place is open. */
+  studioId?: string | null
+}): React.JSX.Element {
   const [status, setStatus] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null)
-  const [busy, setBusy] = useState<'save' | 'copy' | null>(null)
+  const [busy, setBusy] = useState<'save' | 'copy' | 'upload' | null>(null)
   const model = isModelRecord(record)
   const kind = record ? versionFacts(currentVersion(record)).type : 'shirt'
   const guide = model ? MODEL_GUIDE : (UPLOAD_GUIDE[kind] ?? UPLOAD_GUIDE.shirt!)
+
+  const upload = async (): Promise<void> => {
+    if (!record || busy) return
+    setBusy('upload')
+    setStatus(null)
+    try {
+      const ready = await uploadReadiness(record, studioId ?? null)
+      if (!ready.ready) {
+        setStatus({ tone: 'bad', text: ready.reason ?? 'This model cannot be uploaded yet.' })
+        return
+      }
+      const outcome = await uploadModelRecord(record, studioId as string)
+      setStatus(
+        outcome.ok
+          ? {
+              tone: outcome.recovery ? 'bad' : 'ok',
+              text: outcome.recovery ?? `Uploaded as asset ${outcome.assetId}.`
+            }
+          : { tone: 'bad', text: outcome.reason }
+      )
+    } catch (cause) {
+      setStatus({ tone: 'bad', text: cause instanceof Error ? cause.message : String(cause) })
+    } finally {
+      setBusy(null)
+    }
+  }
 
   const save = async (): Promise<void> => {
     if (!record || busy) return
@@ -453,6 +487,21 @@ function UseIt({ record }: { record: ArtifactRecord | null }): React.JSX.Element
       >
         Open {guide.label}
       </button>
+      {model && (
+        <button
+          type="button"
+          disabled={!record || busy !== null}
+          onClick={() => void upload()}
+          title={
+            studioId
+              ? 'Upload the GLB as a Roblox Model asset, then insert it into the open place'
+              : 'Open a place in Roblox Studio first'
+          }
+          className="rounded border border-border px-2 py-1 text-[10.5px] text-secondary-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:opacity-40"
+        >
+          {busy === 'upload' ? 'Uploading…' : 'Upload to Roblox'}
+        </button>
+      )}
       {model ? (
         <ol className="m-0 flex list-decimal flex-col gap-1 pl-4 text-3xs leading-relaxed text-muted-foreground">
           <li>Save the GLB above.</li>
@@ -499,6 +548,14 @@ interface RobloxInspectorProps {
   tabs?: readonly TabId[]
   /** What to say when there is nothing to inspect, per engine. */
   emptyHint?: string
+  /**
+   * The open place's MCP handle, for the model upload.
+   *
+   * Optional because clothing cannot be uploaded at all, and a garment page has
+   * no reason to read Studio status. A model page passes it so `Use it` can offer
+   * the upload and say why it is unavailable when no place is open.
+   */
+  studioId?: string | null
 }
 
 export function RobloxInspector({
@@ -509,7 +566,8 @@ export function RobloxInspector({
   tab: controlledTab,
   onTabChange,
   tabs = CLOTHING_TABS,
-  emptyHint = 'Pick a garment in the Roblox panel to inspect it.'
+  emptyHint = 'Pick a garment in the Roblox panel to inspect it.',
+  studioId
 }: RobloxInspectorProps): React.JSX.Element {
   const [open, setOpen] = useState(true)
   const [ownTab, setOwnTab] = useState<TabId>('Checks')
@@ -596,7 +654,7 @@ export function RobloxInspector({
             {activeTab === 'Versions' && (
               <Versions record={record} current={version} onRestore={onRestore} />
             )}
-            {activeTab === 'Use it' && <UseIt record={record} />}
+            {activeTab === 'Use it' && <UseIt record={record} studioId={studioId} />}
           </>
         )}
       </div>
