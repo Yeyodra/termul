@@ -1,10 +1,10 @@
-/**
+﻿/**
  * What the viewport is showing, and how each artifact kind becomes a scene.
  *
  * The viewport core knows nothing about artifacts: it takes `Group`s, frames
  * them, and draws. This module is the only place that knows a garment is worn by
  * an avatar or that a model arrives as a GLB. Adding a kind means adding an
- * interface, a union member and one builder — the viewport, the store, the tab
+ * interface, a union member and one builder â€” the viewport, the store, the tab
  * and the layer stay untouched.
  *
  * Builders are a `Record` over the union, not a `switch`: a new member fails
@@ -24,9 +24,11 @@ import {
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { OBJLoader } from 'three/addons/loaders/OBJLoader.js'
 import { STLLoader } from 'three/addons/loaders/STLLoader.js'
+import type { ModelSpec } from '../engines/3d/schema'
 import { buildAvatar, type GarmentTextures } from '../engines/clothing/avatar/avatar'
 import type { Rig } from '../engines/clothing/avatar/rig'
 import type { DesignType } from '../engines/clothing/schema'
+import { modelMeshFromSpec } from './model-mesh'
 
 export interface ArtifactScene {
   /** The object graph to frame and show. */
@@ -64,13 +66,29 @@ export interface OutfitArtifact {
 export interface MeshArtifact {
   kind: 'mesh'
   /**
-   * `glb` is binary and arrives as a `data:model/gltf-binary;base64,…` URL;
+   * `glb` is binary and arrives as a `data:model/gltf-binary;base64,â€¦` URL;
    * `obj` and `stl` are text and arrive as `data:` or `blob:` URLs. Adding it
-   * is additive — the obj and stl paths are unchanged.
+   * is additive - the obj and stl paths are unchanged.
    */
   format: 'obj' | 'stl' | 'glb'
   /** URL or data URL of the mesh. */
   url: string
+  name?: string
+}
+
+/**
+ * A generated model carried as its spec rather than as a serialised file.
+ *
+ * A GLB round trip is the reason every model rendered white: the palette PNG
+ * inside the file is decoded asynchronously, and when that decode fails three.js
+ * keeps the material's default white base colour and reports nothing. Holding the
+ * spec instead lets the mesh be built with its texture in one synchronous step,
+ * which is what RobloxKit does.
+ */
+export interface SpecModelArtifact {
+  kind: 'model'
+  /** The authored document, exactly as the record stores it. */
+  spec: unknown
   name?: string
 }
 
@@ -88,7 +106,12 @@ export interface TextureArtifact {
   name?: string
 }
 
-export type Artifact = OutfitArtifact | MeshArtifact | SkyboxArtifact | TextureArtifact
+export type Artifact =
+  | OutfitArtifact
+  | MeshArtifact
+  | SpecModelArtifact
+  | SkyboxArtifact
+  | TextureArtifact
 
 /** Decoding is injectable so the registry can be tested without real pixels. */
 export type Decode = (src: string) => Promise<CanvasImageSource>
@@ -143,7 +166,7 @@ function outfitLabel(worn: DesignType[], primary: DesignType): string {
  *
  * GLB is binary, so it is fetched as an `ArrayBuffer` and parsed by
  * `GLTFLoader`; OBJ and STL are text and keep their existing path. The GLB
- * branch is additive — nothing about the other two changed.
+ * branch is additive â€” nothing about the other two changed.
  */
 async function buildMesh(artifact: MeshArtifact): Promise<ArtifactScene> {
   const loaded = await loadMeshGroup(artifact)
@@ -246,9 +269,22 @@ type Builder<K extends Artifact['kind']> = (
   decode: Decode
 ) => Promise<ArtifactScene>
 
+/** A model drawn from its spec, with its palette attached in the same step. */
+async function buildSpecModel(artifact: SpecModelArtifact): Promise<ArtifactScene> {
+  const built = modelMeshFromSpec(artifact.spec as ModelSpec)
+  const group = new Group()
+  group.add(built.mesh)
+  return {
+    objects: [group],
+    dispose: () => built.dispose(),
+    label: artifact.name?.trim() || 'the generated model'
+  }
+}
+
 const BUILDERS: { [K in Artifact['kind']]: Builder<K> } = {
   clothing: buildClothing,
   mesh: buildMesh,
+  model: buildSpecModel,
   skybox: buildSkybox,
   texture: buildTexture
 }

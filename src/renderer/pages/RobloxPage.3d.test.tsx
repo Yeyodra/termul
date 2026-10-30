@@ -44,10 +44,14 @@ vi.mock('@/lib/generator/viewport/ArtifactViewportPanel', () => ({
     artifact,
     placeholder
   }: {
-    artifact?: { format?: string; url?: string; name?: string } | null
+    artifact?: { kind?: string; format?: string; name?: string } | null
     placeholder?: string
   }) => (
-    <div data-testid="viewport" data-format={artifact?.format} data-name={artifact?.name}>
+    <div
+      data-testid="viewport"
+      data-format={artifact?.kind ?? artifact?.format}
+      data-name={artifact?.name}
+    >
       {artifact ? 'scene' : placeholder}
     </div>
   )
@@ -121,7 +125,7 @@ describe('the 3D page route', () => {
     expect(screen.getByText(/Open a project first/)).toBeInTheDocument()
   })
 
-  it('mounts the model viewport and hands it a glb artifact', async () => {
+  it('mounts the model viewport and hands it the stored spec', async () => {
     mocks.loadArtifactRecords.mockResolvedValue([
       {
         slug: 'wooden-crate',
@@ -138,7 +142,17 @@ describe('the 3D page route', () => {
             prompt: 'a wooden crate',
             ok: true,
             atlas: 'v1.glb',
-            model: 'v1.glb'
+            model: 'v1.glb',
+            // The spec is what the viewport draws from: without it there is no
+            // model to build, which is why a version saved before the spec was
+            // kept renders nothing.
+            design: {
+              version: 1,
+              name: 'Wooden crate',
+              category: 'prop',
+              palette: { wood: '#8a5a2b' },
+              parts: [{ type: 'box', size: [2, 2, 2], color: 'wood' }]
+            }
           }
         ]
       }
@@ -148,7 +162,7 @@ describe('the 3D page route', () => {
     renderPage('/roblox/3d')
 
     const viewport = await screen.findByTestId('viewport')
-    expect(viewport).toHaveAttribute('data-format', 'glb')
+    expect(viewport).toHaveAttribute('data-format', 'model')
     expect(viewport).toHaveAttribute('data-name', 'a wooden crate')
     expect(await screen.findByText('scene')).toBeInTheDocument()
   })

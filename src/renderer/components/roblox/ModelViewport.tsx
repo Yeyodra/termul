@@ -1,26 +1,24 @@
-/**
+﻿/**
  * The 3D model a record holds, in the viewport the page already has.
  *
  * One `ArtifactViewportPanel` per page, for the same reason `ClothingViewport`
  * uses one: `ArtifactViewport` is deliberately per-instance, because a shared
  * WebGL surface caused three separate bugs (commit `640ed56e`).
  *
- * The model arrives from the records store as a `data:model/gltf-binary` URL,
- * which `MeshArtifact` already knows how to fetch and `GLTFLoader` parses. That
- * is why this component is a reader and not a builder: the generation path
- * writes the GLB, the store reads it, and the viewport draws it.
+ * The model is drawn from the spec the record stores, not from its GLB. A GLB
+ * carries the palette as an embedded PNG that `GLTFLoader` decodes
+ * asynchronously, and when that decode fails three.js silently keeps a white
+ * base colour - which is why every model rendered colourless. Building the mesh
+ * from the spec attaches the palette in the same synchronous step, so a model
+ * cannot appear without its colours.
  */
 
 import { useEffect, useMemo } from 'react'
 import { useRobloxStudioStatus } from '@/hooks/use-roblox-studio-status'
 import { type ArtifactRecord, currentVersion, restoreVersion } from '@/lib/artifact-records'
 import { ArtifactViewportPanel } from '@/lib/generator/viewport/ArtifactViewportPanel'
-import type { MeshArtifact } from '@/lib/generator/viewport/artifact'
-import {
-  useProjectRecords,
-  useRecordModel,
-  useRobloxRecordsStore
-} from '@/stores/roblox-records-store'
+import type { SpecModelArtifact } from '@/lib/generator/viewport/artifact'
+import { useProjectRecords, useRobloxRecordsStore } from '@/stores/roblox-records-store'
 import { pickSlug, usePickedSlug } from '@/stores/roblox-selection-store'
 import { ModelComposer } from './ModelComposer'
 import { MODEL_TABS, RobloxInspector } from './RobloxInspector'
@@ -58,18 +56,16 @@ export function ModelViewport({ projectPath }: ModelViewportProps): React.JSX.El
     return withModel.find((record) => record.slug === picked) ?? null
   }, [records, picked])
 
-  const model = useRecordModel(projectPath, active)
   const version = active ? currentVersion(active) : null
 
-  const artifact = useMemo<MeshArtifact | null>(() => {
-    if (!model || !active) return null
+  const artifact = useMemo<SpecModelArtifact | null>(() => {
+    if (!version?.design) return null
     return {
-      kind: 'mesh',
-      format: 'glb',
-      url: model,
-      name: version?.prompt?.trim() || active.slug
+      kind: 'model',
+      spec: version.design,
+      name: version.prompt?.trim() || active?.slug
     }
-  }, [model, active, version])
+  }, [version, active])
 
   /**
    * Move the pointer, then re-read the project so the viewport, the collection
