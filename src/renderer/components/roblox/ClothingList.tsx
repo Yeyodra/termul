@@ -13,7 +13,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Check, Layers, Plus } from '@/components/icons'
-import { type ArtifactRecord, currentVersion } from '@/lib/artifact-records'
+import { type ArtifactRecord, currentVersion, recordsFor } from '@/lib/artifact-records'
 import {
   DEFAULT_ROBLOX_FEATURE,
   featurePath,
@@ -142,22 +142,29 @@ export function ClothingList({
   const selected =
     picked && records?.some((record) => record.slug === picked) ? picked : records?.[0]?.slug
 
-  const kinds = useMemo(
-    () => [...new Set((records ?? []).map((record) => record.kind))].sort(),
-    [records]
-  )
+  /**
+   * Only the records this generator produced.
+   *
+   * The collection on disk is one tree per generator, but this panel read every
+   * record and ignored which feature was open, so the 3D page listed shirts and
+   * the clothing page listed models. Everything below - the rows, the counts, the
+   * kind filter and the empty state - reads from `mine`, so a page cannot show a
+   * record it has no viewport for.
+   */
+  const mine = useMemo(() => recordsFor(records, feature), [records, feature])
+
+  const kinds = useMemo(() => [...new Set(mine.map((record) => record.kind))].sort(), [mine])
 
   const shown = useMemo(() => {
-    if (!records) return []
     const needle = query.trim().toLowerCase()
-    return records.filter((record) => {
+    return mine.filter((record) => {
       if (kind !== 'all' && record.kind !== kind) return false
       if (!needle) return true
       const version = currentVersion(record)
       const haystack = `${version.prompt ?? ''} ${record.slug}`.toLowerCase()
       return haystack.includes(needle)
     })
-  }, [records, query, kind])
+  }, [mine, query, kind])
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto pb-2">
@@ -166,10 +173,12 @@ export function ClothingList({
       <div className="mx-2 my-2 h-px bg-border/60" />
 
       {records === undefined ? (
-        <p className="px-4 text-xs text-muted-foreground">Reading the collectionâ€¦</p>
-      ) : records.length === 0 ? (
+        <p className="px-4 text-xs text-muted-foreground">Reading the collection…</p>
+      ) : mine.length === 0 ? (
         <p className="px-4 text-xs text-muted-foreground">
-          No garment yet. Ask the agent for one and it lands here, with every version.
+          {feature === '3d'
+            ? 'No model yet. Describe one on the page, or ask the agent, and it lands here with every version.'
+            : 'No garment yet. Ask the agent for one and it lands here, with every version.'}
         </p>
       ) : (
         <>

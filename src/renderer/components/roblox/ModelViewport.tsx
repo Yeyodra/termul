@@ -21,7 +21,8 @@ import {
   useRecordModel,
   useRobloxRecordsStore
 } from '@/stores/roblox-records-store'
-import { usePickedSlug } from '@/stores/roblox-selection-store'
+import { pickSlug, usePickedSlug } from '@/stores/roblox-selection-store'
+import { ModelComposer } from './ModelComposer'
 import { MODEL_TABS, RobloxInspector } from './RobloxInspector'
 
 interface ModelViewportProps {
@@ -86,8 +87,8 @@ export function ModelViewport({ projectPath }: ModelViewportProps): React.JSX.El
   const placeholder = active
     ? `Reading v${version?.n ?? 1}.`
     : records?.length
-      ? 'No 3D model in this project yet. Ask the agent to generate one.'
-      : 'Describe a model in the chat and the agent will build it.'
+      ? 'Describe a model below and it lands here.'
+      : 'Describe a model below, or ask the agent for one.'
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-1 overflow-hidden">
@@ -125,6 +126,16 @@ export function ModelViewport({ projectPath }: ModelViewportProps): React.JSX.El
             </div>
           </dl>
         ) : null}
+        <ModelComposer
+          projectPath={projectPath}
+          record={active}
+          onSettled={(slug) => {
+            // Read the project first, then pick: the pick names a record that
+            // only exists after the re-read, and picking first left the page on
+            // whatever record happened to be newest.
+            refresh(projectPath).then(() => pickSlug(projectPath, slug))
+          }}
+        />
       </div>
 
       <RobloxInspector

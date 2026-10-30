@@ -433,6 +433,29 @@ export function isModelRecord(record: ArtifactRecord | null): boolean {
 }
 
 /**
+ * The records one generator page owns.
+ *
+ * The panel used to show every record in the project, so the 3D page listed
+ * shirts and the clothing page listed models. The generator is a fact about the
+ * record rather than a preference of the page, so it is read from the record:
+ * a version that wrote a model file is a model, everything else is a garment.
+ *
+ * `record.kind` cannot decide this. It holds either a garment type (`shirt`) or
+ * a model family (`prop`), and the two vocabularies share no marker that names
+ * the generator that produced them.
+ */
+export function recordsFor(
+  records: ArtifactRecord[] | undefined,
+  feature: string
+): ArtifactRecord[] {
+  if (!records) return []
+  // A generator with no engine yet owns nothing: it has no viewport, so listing
+  // its records would offer a click that lands on "no engine in this build".
+  if (feature !== '3d' && feature !== 'clothing') return []
+  return records.filter((record) => isModelRecord(record) === (feature === '3d'))
+}
+
+/**
  * Copy a version's atlas to `<project>/<slug>.png`, which is the file a user
  * hands to Roblox.
  *

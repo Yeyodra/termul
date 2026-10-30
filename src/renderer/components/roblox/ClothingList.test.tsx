@@ -184,3 +184,84 @@ describe('ClothingList', () => {
     expect(useRobloxSelectionStore.getState().draftByProject['/p']).toBeUndefined()
   })
 })
+
+describe('the collection is split per generator', () => {
+  beforeEach(() => {
+    mocks.loadArtifactRecords.mockReset()
+    mocks.readAtlasDataUrl.mockReset()
+    mocks.readStillDataUrl.mockReset()
+    mocks.readAtlasDataUrl.mockResolvedValue('data:image/png;base64,AAAA')
+    mocks.readStillDataUrl.mockResolvedValue(null)
+    useRobloxSelectionStore.setState({ pickedByProject: {}, draftByProject: {} })
+    useRobloxRecordsStore.setState({
+      recordsByProject: {},
+      loaded: {},
+      atlases: {},
+      stills: {},
+      reading: {}
+    })
+  })
+
+  function model(slug: string) {
+    return record(slug, {
+      kind: 'prop',
+      dir: `/p/.termul/generated/prop/${slug}`,
+      versions: [
+        { n: 1, at: 1, prompt: slug, ok: true, kind: 'prop', atlas: 'v1.glb', model: 'v1.glb' }
+      ]
+    })
+  }
+
+  function renderAt(path: string): void {
+    render(
+      <MemoryRouter initialEntries={[path]}>
+        <ClothingList projectPath="/p" feature={path.endsWith('3d') ? '3d' : 'clothing'} />
+      </MemoryRouter>
+    )
+  }
+
+  it('keeps a model out of the clothing collection', async () => {
+    mocks.loadArtifactRecords.mockResolvedValue([record('royal-robe'), model('treasure-chest')])
+    renderAt('/roblox/clothing')
+
+    const list = await screen.findByRole('list', { name: 'Collection' })
+    expect(within(list).getByText('royal-robe')).toBeInTheDocument()
+    expect(within(list).queryByText('treasure-chest')).toBeNull()
+    expect(screen.getByText('1 item')).toBeInTheDocument()
+  })
+
+  it('keeps a garment out of the 3D collection', async () => {
+    mocks.loadArtifactRecords.mockResolvedValue([record('royal-robe'), model('treasure-chest')])
+    renderAt('/roblox/3d')
+
+    const list = await screen.findByRole('list', { name: 'Collection' })
+    expect(within(list).getByText('treasure-chest')).toBeInTheDocument()
+    expect(within(list).queryByText('royal-robe')).toBeNull()
+    expect(screen.getByText('1 item')).toBeInTheDocument()
+  })
+
+  it('offers no kind filter entry for the other generator', async () => {
+    mocks.loadArtifactRecords.mockResolvedValue([record('royal-robe'), model('treasure-chest')])
+    renderAt('/roblox/3d')
+
+    const select = await screen.findByRole('combobox', { name: /Filter by kind/ })
+    const labels = [...select.querySelectorAll('option')].map((option) => option.textContent)
+    expect(labels).toContain('prop')
+    expect(labels).not.toContain('Shirt')
+  })
+
+  it('invites a model, not a garment, when the 3D collection is empty', async () => {
+    mocks.loadArtifactRecords.mockResolvedValue([record('royal-robe')])
+    renderAt('/roblox/3d')
+
+    expect(await screen.findByText(/No model yet/)).toBeInTheDocument()
+    expect(screen.queryByText(/No garment yet/)).toBeNull()
+  })
+
+  it('still invites a garment when only models exist', async () => {
+    mocks.loadArtifactRecords.mockResolvedValue([model('treasure-chest')])
+    renderAt('/roblox/clothing')
+
+    expect(await screen.findByText(/No garment yet/)).toBeInTheDocument()
+  })
+})

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * The feature flag and the 3D page route.
  *
  * These exist because of a real regression: the 3D engine shipped, the flag was
@@ -107,9 +107,7 @@ describe('the 3D page route', () => {
     renderPage('/roblox/3d')
     // The regression this file exists for: this text used to appear here.
     expect(screen.queryByText(/has no engine in this build yet/)).toBeNull()
-    expect(
-      await screen.findByText(/Ask the agent to generate one|agent will build it/)
-    ).toBeTruthy()
+    expect(await screen.findByText(/Describe a model below/)).toBeTruthy()
   })
 
   it('still refuses a family with no engine', () => {
@@ -174,7 +172,7 @@ describe('the 3D page route', () => {
     const viewport = await screen.findByTestId('viewport')
     // No model file on the version, so nothing is drawn and the placeholder shows.
     expect(viewport).not.toHaveAttribute('data-format', 'glb')
-    expect(await screen.findByText(/Ask the agent to generate one/)).toBeInTheDocument()
+    expect(await screen.findByText(/Describe a model below/)).toBeInTheDocument()
   })
 
   it('keeps clothing on its own viewport', async () => {
