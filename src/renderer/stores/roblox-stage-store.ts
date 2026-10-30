@@ -16,8 +16,18 @@ import { create } from 'zustand'
 
 export type StageState = 'idle' | 'running' | 'done' | 'error'
 
+/**
+ * Which half of the transition the viewport is in.
+ *
+ * A revision starts from a 3D avatar, so it unfolds into the flat sheet first,
+ * draws, then folds back. A fresh garment has nothing to unfold and starts at
+ * `draw`.
+ */
+export type StagePhase = 'idle' | 'unwrap' | 'draw' | 'wrap'
+
 export interface StageSnapshot {
   state: StageState
+  phase: StagePhase
   /** 1-based layer being drawn, or 0 before the first one. */
   layer: number
   total: number
@@ -25,15 +35,19 @@ export interface StageSnapshot {
   stage: string
   /** The sheet as it is being drawn, so the page can show it growing. */
   sheet: string | null
+  /** The atlas the avatar showed when a revision started, for the unfold. */
+  base: string | null
   error: string | null
 }
 
 const IDLE: StageSnapshot = {
   state: 'idle',
+  phase: 'idle',
   layer: 0,
   total: 0,
   stage: '',
   sheet: null,
+  base: null,
   error: null
 }
 
@@ -63,6 +77,8 @@ export function useStage(projectPath: string | undefined): StageSnapshot {
 /** The line under the viewport while a generation runs. */
 export function progressLine(snapshot: StageSnapshot): string | null {
   if (snapshot.state !== 'running') return null
+  if (snapshot.phase === 'unwrap') return 'Unfolding to the sheet…'
+  if (snapshot.phase === 'wrap') return 'Folding back into 3D…'
   if (snapshot.total > 0) return `Drawing layer ${snapshot.layer} of ${snapshot.total}`
   return snapshot.stage ? `${snapshot.stage}…` : 'Starting…'
 }

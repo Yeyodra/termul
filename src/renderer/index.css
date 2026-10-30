@@ -22,6 +22,33 @@
   --animate-typing-bounce: typing-bounce 1s cubic-bezier(0.77, 0, 0.175, 1) infinite;
   /* Streaming caret: a steady blink while the agent is writing. */
   --animate-caret-blink: caret-blink 1s step-end infinite;
+  /* A garment revision moves between two pictures: the avatar lies flat into its
+     sheet, and the new sheet stands back up into an avatar. `fold-lands` is the
+     entrance and `fold-away` the exit, on the same axis and angle, so the two
+     halves read as one motion rather than two cuts. 78deg is the resting fold. */
+  --animate-fold-lands: fold-lands 320ms cubic-bezier(0.33, 1, 0.68, 1) forwards;
+  --animate-fold-away: fold-away 320ms cubic-bezier(0.33, 1, 0.68, 1) forwards;
+
+  @keyframes fold-lands {
+    from {
+      opacity: 0;
+      transform: perspective(1200px) rotateX(78deg) scale(0.94);
+    }
+    to {
+      opacity: 1;
+      transform: perspective(1200px) rotateX(0deg) scale(1);
+    }
+  }
+  @keyframes fold-away {
+    from {
+      opacity: 1;
+      transform: perspective(1200px) rotateX(0deg) scale(1);
+    }
+    to {
+      opacity: 0;
+      transform: perspective(1200px) rotateX(-78deg) scale(0.94);
+    }
+  }
 
   @keyframes accordion-down {
     from {

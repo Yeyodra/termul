@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+﻿import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useRobloxRecordsStore } from '@/stores/roblox-records-store'
@@ -100,7 +100,7 @@ describe('ClothingList', () => {
     ])
     renderList()
 
-    expect(await screen.findByText('Shirt · v1')).toBeInTheDocument()
+    expect(await screen.findByText('Shirt Â· v1')).toBeInTheDocument()
     expect(mocks.readStillDataUrl).toHaveBeenCalledWith(
       expect.objectContaining({ slug: 'royal-robe' }),
       expect.objectContaining({ n: 1 })
@@ -135,10 +135,8 @@ describe('ClothingList', () => {
     mocks.loadArtifactRecords.mockResolvedValue([record('royal-robe'), record('desert-camo')])
     renderList()
 
-    expect(await screen.findByRole('button', { name: /royal-robe/ })).toHaveAttribute(
-      'aria-current',
-      'true'
-    )
+    const row = await screen.findByText('royal-robe')
+    expect(row.closest('button')).toHaveAttribute('aria-current', 'true')
   })
 
   it('falls back to the newest record when the pick names one that is gone', async () => {
@@ -146,10 +144,8 @@ describe('ClothingList', () => {
     mocks.loadArtifactRecords.mockResolvedValue([record('royal-robe')])
     renderList()
 
-    expect(await screen.findByRole('button', { name: /royal-robe/ })).toHaveAttribute(
-      'aria-current',
-      'true'
-    )
+    const row = await screen.findByText('royal-robe')
+    expect(row.closest('button')).toHaveAttribute('aria-current', 'true')
   })
 
   it('renders the generator list above the collection', async () => {

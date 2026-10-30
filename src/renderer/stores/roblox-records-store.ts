@@ -20,7 +20,11 @@ import {
   readStillDataUrl
 } from '@/lib/artifact-records'
 
-function pictureKey(projectPath: string, slug: string, n: number): string {
+/**
+ * Exported because an outfit reads several records' atlases at once, and a hook
+ * cannot be called in a loop: the page keys into `atlases` with this instead.
+ */
+export function pictureKey(projectPath: string, slug: string, n: number): string {
   return `${projectPath}|${slug}@${n}`
 }
 
@@ -35,8 +39,9 @@ interface RobloxRecordsState {
   stills: Record<string, string>
   /** Project paths with a read in flight, so a re-render cannot start a second. */
   reading: Record<string, boolean>
-  load: (projectPath: string) => void
-  refresh: (projectPath: string) => void
+  load: (projectPath: string) => Promise<void>
+  /** Re-read, resolving once the new list is in the store. */
+  refresh: (projectPath: string) => Promise<void>
 }
 
 export const useRobloxRecordsStore = create<RobloxRecordsState>((set, get) => {
@@ -67,25 +72,49 @@ export const useRobloxRecordsStore = create<RobloxRecordsState>((set, get) => {
     })
   }
 
-  const read = async (projectPath: string, force: boolean): Promise<void> => {
-    const state = get()
-    if (state.reading[projectPath]) return
-    if (!force && state.loaded[projectPath]) return
+  /**
+   * One read per project at a time, and a caller that arrives mid-read waits for
+   * that read instead of returning at once.
+   *
+   * Returning immediately made `refresh` resolve before the new list was in the
+   * store, so a caller that then picked the slug it had just written picked a
+   * record the list did not have yet and the page fell back to a different one.
+   */
+  const inflight: Record<string, Promise<void>> = {}
 
-    set((current) => ({ reading: { ...current.reading, [projectPath]: true } }))
+  const read = async (projectPath: string, force: boolean): Promise<void> => {
+    const running = inflight[projectPath]
+    if (running) {
+      await running
+      if (!force) return
+    } else {
+      const state = get()
+      if (!force && state.loaded[projectPath]) return
+    }
+
+    const task = (async (): Promise<void> => {
+      set((current) => ({ reading: { ...current.reading, [projectPath]: true } }))
+      try {
+        const records = await loadArtifactRecords(projectPath)
+        set((current) => ({
+          recordsByProject: { ...current.recordsByProject, [projectPath]: records },
+          loaded: { ...current.loaded, [projectPath]: true }
+        }))
+        await readPictures(projectPath, records)
+      } finally {
+        set((current) => {
+          const reading = { ...current.reading }
+          delete reading[projectPath]
+          return { reading }
+        })
+      }
+    })()
+
+    inflight[projectPath] = task
     try {
-      const records = await loadArtifactRecords(projectPath)
-      set((current) => ({
-        recordsByProject: { ...current.recordsByProject, [projectPath]: records },
-        loaded: { ...current.loaded, [projectPath]: true }
-      }))
-      await readPictures(projectPath, records)
+      await task
     } finally {
-      set((current) => {
-        const reading = { ...current.reading }
-        delete reading[projectPath]
-        return { reading }
-      })
+      delete inflight[projectPath]
     }
   }
 
@@ -96,12 +125,12 @@ export const useRobloxRecordsStore = create<RobloxRecordsState>((set, get) => {
     stills: {},
     reading: {},
     load: (projectPath) => {
-      if (!projectPath) return
-      void read(projectPath, false)
+      if (!projectPath) return Promise.resolve()
+      return read(projectPath, false)
     },
     refresh: (projectPath) => {
-      if (!projectPath) return
-      void read(projectPath, true)
+      if (!projectPath) return Promise.resolve()
+      return read(projectPath, true)
     }
   }
 })

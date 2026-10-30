@@ -21,13 +21,29 @@ interface RobloxSelectionState {
   pickedByProject: Record<string, string>
   /** Project paths where the page shows a blank garment instead of a record. */
   draftByProject: Record<string, boolean>
+  /**
+   * Project path -> the records the outfit preview wears.
+   *
+   * A pair of garments is not recorded on disk: `item.json` holds a slug, a kind
+   * and its versions, and nothing says "this pair of trousers belongs with that
+   * shirt". So the pairing cannot be inferred - the newest of each kind is a
+   * guess, and it put a fresh garment in an old outfit. The user marks the pieces
+   * instead, and this is where that mark lives.
+   *
+   * Keyed by `kind:slug`, because a slug alone is ambiguous: the same one really
+   * does exist under two kinds.
+   */
+  wornByProject: Record<string, string[]>
   pick: (projectPath: string, slug: string) => void
   startDraft: (projectPath: string) => void
+  /** Wear or take off one record in the outfit preview. */
+  toggleWorn: (projectPath: string, record: { kind: string; slug: string }) => void
 }
 
 export const useRobloxSelectionStore = create<RobloxSelectionState>((set) => ({
   pickedByProject: {},
   draftByProject: {},
+  wornByProject: {},
   pick: (projectPath, slug) => {
     set((state) => {
       if (!projectPath) return {}
@@ -58,6 +74,15 @@ export const useRobloxSelectionStore = create<RobloxSelectionState>((set) => ({
         draftByProject: { ...state.draftByProject, [projectPath]: true }
       }
     })
+  },
+  toggleWorn: (projectPath, record) => {
+    if (!projectPath) return
+    const key = `${record.kind}:${record.slug}`
+    set((state) => {
+      const current = state.wornByProject[projectPath] ?? []
+      const next = current.includes(key) ? current.filter((one) => one !== key) : [...current, key]
+      return { wornByProject: { ...state.wornByProject, [projectPath]: next } }
+    })
   }
 }))
 
@@ -75,10 +100,31 @@ export function useIsDraft(projectPath: string | undefined): boolean {
   )
 }
 
+/** The garment made from a blank page, worn on its own; undefined otherwise. */
 export function pickSlug(projectPath: string, slug: string): void {
   useRobloxSelectionStore.getState().pick(projectPath, slug)
 }
 
 export function startDraft(projectPath: string): void {
   useRobloxSelectionStore.getState().startDraft(projectPath)
+}
+
+/** A shared empty list, so a project with nothing worn returns a stable value. */
+const NONE: string[] = []
+
+/**
+ * The `kind:slug` keys the outfit preview wears in this project.
+ *
+ * The fallback is a module constant, not `[]`: a fresh array on every call is a
+ * new reference each render, which made the store notify forever and took the
+ * whole page down with "Maximum update depth exceeded".
+ */
+export function useWornKeys(projectPath: string | undefined): string[] {
+  return useRobloxSelectionStore((state) =>
+    projectPath ? (state.wornByProject[projectPath] ?? NONE) : NONE
+  )
+}
+
+export function toggleWorn(projectPath: string, record: { kind: string; slug: string }): void {
+  useRobloxSelectionStore.getState().toggleWorn(projectPath, record)
 }

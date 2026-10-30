@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useRobloxRecordsStore } from '@/stores/roblox-records-store'
@@ -11,7 +11,7 @@ const { mocks, viewports } = vi.hoisted(() => ({
     readAtlasDataUrl: vi.fn(),
     readStillDataUrl: vi.fn()
   },
-  viewports: [] as Array<{ atlas?: string; name?: string }>
+  viewports: [] as Outfit[]
 }))
 
 vi.mock('@/lib/artifact-records', async () => {
@@ -25,15 +25,21 @@ vi.mock('@/lib/artifact-records', async () => {
   }
 })
 
+interface Outfit {
+  atlases: Partial<Record<'shirt' | 'pants' | 'tshirt', string>>
+  primary?: string
+  name?: string
+}
+
 vi.mock('@/lib/generator/viewport/ArtifactViewportPanel', () => ({
   ArtifactViewportPanel: ({
     artifact,
     placeholder
   }: {
-    artifact: unknown
+    artifact: Outfit | null
     placeholder?: string
   }) => {
-    viewports.push((artifact ?? {}) as { atlas?: string; name?: string })
+    viewports.push(artifact ?? { atlases: {} })
     return <div data-testid="viewport">{artifact ? 'scene' : placeholder}</div>
   }
 }))
@@ -69,7 +75,11 @@ describe('ClothingViewport', () => {
     mocks.readAtlasDataUrl.mockResolvedValue('data:image/png;base64,AAAA')
     mocks.readStillDataUrl.mockResolvedValue(null)
     viewports.length = 0
-    useRobloxSelectionStore.setState({ pickedByProject: {} })
+    useRobloxSelectionStore.setState({
+      pickedByProject: {},
+      draftByProject: {},
+      soloByProject: {}
+    })
     useRobloxRecordsStore.setState({
       recordsByProject: {},
       loaded: {},
@@ -84,7 +94,9 @@ describe('ClothingViewport', () => {
     renderViewport()
 
     expect(await screen.findByText('scene')).toBeInTheDocument()
-    expect(viewports.some((entry) => entry.atlas === 'data:image/png;base64,AAAA')).toBe(true)
+    expect(viewports.some((entry) => entry.atlases.shirt === 'data:image/png;base64,AAAA')).toBe(
+      true
+    )
   })
 
   it('switches the viewport when the Side panel picks another record', async () => {
@@ -125,5 +137,63 @@ describe('ClothingViewport', () => {
     // Both the viewport placeholder and the Inspector say it, so this asserts
     // presence rather than uniqueness on purpose.
     expect((await screen.findAllByText(/Pick a garment/)).length).toBeGreaterThan(0)
+  })
+
+  async function lastOutfit(): Promise<Outfit> {
+    await screen.findByText('scene')
+    const outfit = viewports.at(-1)
+    if (!outfit) throw new Error('the viewport was never given an outfit')
+    return outfit
+  }
+
+  it('shows the picked garment alone, never the rest of the collection', async () => {
+    // RobloxKit's canvas holds one item. Drawing the whole collection on one
+    // avatar made every fresh garment arrive wearing the others.
+    mocks.loadArtifactRecords.mockResolvedValue([
+      record('royal-robe'),
+      record('blue-jeans', { versions: [{ n: 1, at: 1, ok: true, design: { type: 'pants' } }] })
+    ])
+    renderViewport()
+
+    const outfit = await lastOutfit()
+    expect(Object.keys(outfit.atlases)).toEqual(['shirt'])
+    expect(outfit.primary).toBe('shirt')
+  })
+
+  it('shows a picked pair of pants alone too', async () => {
+    mocks.loadArtifactRecords.mockResolvedValue([
+      record('royal-robe'),
+      record('blue-jeans', { versions: [{ n: 1, at: 1, ok: true, design: { type: 'pants' } }] })
+    ])
+    useRobloxSelectionStore.setState({ pickedByProject: { '/p': 'blue-jeans' } })
+    renderViewport()
+
+    const outfit = await lastOutfit()
+    expect(Object.keys(outfit.atlases)).toEqual(['pants'])
+  })
+
+  it('wears nothing while a draft is open', async () => {
+    mocks.loadArtifactRecords.mockResolvedValue([record('royal-robe')])
+    useRobloxSelectionStore.setState({ draftByProject: { '/p': true } })
+    renderViewport()
+
+    expect(await screen.findByText(/Describe a garment/)).toBeInTheDocument()
+    expect(viewports.every((entry) => Object.keys(entry.atlases).length === 0)).toBe(true)
+  })
+
+  it('never shows a different record than the one picked', async () => {
+    // Right after a generation lands the pick names a slug the list does not have
+    // yet. Falling back to the newest record opened a garment nobody picked.
+    mocks.loadArtifactRecords.mockResolvedValue([
+      record('some-other-shirt'),
+      record('blue-jeans', { versions: [{ n: 1, at: 1, ok: true, design: { type: 'pants' } }] })
+    ])
+    useRobloxSelectionStore.setState({ pickedByProject: { '/p': 'not-read-yet' } })
+    renderViewport()
+
+    // The viewport and the Inspector both say it, so presence is what this
+    // asserts rather than uniqueness.
+    expect((await screen.findAllByText(/Pick a garment/)).length).toBeGreaterThan(0)
+    expect(viewports.every((entry) => Object.keys(entry.atlases).length === 0)).toBe(true)
   })
 })
