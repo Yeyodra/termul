@@ -1,9 +1,9 @@
 /**
  * The generators a Roblox surface can show.
  *
- * Only clothing has an engine in this build; the rest are listed as `soon` so the
- * panel reads as a roadmap instead of a broken UI (D8). The picked feature is a
- * URL segment, so a page is bookmarkable and survives a refresh (D6).
+ * Clothing and 3D have engines in this build; the rest are listed as `soon` so
+ * the panel reads as a roadmap instead of a broken UI (D8). The picked feature
+ * is a URL segment, so a page is bookmarkable and survives a refresh (D6).
  *
  * The Side panel and the page both resolve the feature from the same path, so
  * they cannot disagree about which one is open.
@@ -11,7 +11,7 @@
 
 export const ROBLOX_FEATURES = [
   { id: 'clothing', label: 'Clothing', ready: true },
-  { id: '3d', label: '3D Generator', ready: false },
+  { id: '3d', label: '3D Generator', ready: true },
   { id: 'vfx', label: 'VFX', ready: false },
   { id: 'gfx', label: 'GFX', ready: false },
   { id: 'icon', label: 'Icon', ready: false },
