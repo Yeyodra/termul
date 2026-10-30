@@ -8,6 +8,26 @@
  * `prompt`, `export` and `studio` join them as they land.
  */
 export {
+  BUDGET_LIMITS,
+  buildModel,
+  buildSpec,
+  countOpenEdges,
+  dropDegenerate,
+  facesOutward,
+  fitBudget,
+  flipWinding,
+  type Model,
+  type ModelGroup,
+  type ModelHealth,
+  type ModelPart,
+  ModelRejected,
+  modelBounds,
+  modelTriangles,
+  type RepairResult,
+  repairGeometry,
+  signedVolume
+} from './build'
+export {
   EXPR_FUNCTION_NAMES,
   EXPR_FUNCTIONS,
   evaluate,
