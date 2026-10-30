@@ -397,6 +397,41 @@ export function modelFormat(file: string): 'glb' | 'obj' | 'stl' {
   return 'obj'
 }
 
+/** The extensions a 3D version writes, as opposed to a garment's PNG atlas. */
+const MODEL_EXTENSIONS = ['glb', 'gltf', 'obj', 'stl']
+
+/**
+ * Whether one version holds a 3D model rather than a garment atlas.
+ *
+ * Decided from the version's own file: a 3D version always writes `model`, and
+ * its `atlas` points at the same mesh file. A garment's `atlas` is a PNG, so the
+ * extension is enough when `model` is absent (a record written before that field
+ * existed).
+ */
+export function isModelVersion(version: RecordVersion | null | undefined): boolean {
+  if (!version) return false
+  if (version.model) return true
+  // `atlas` is typed as required but a hand-written or older record can omit it,
+  // and this predicate runs on every record in a project, so a missing file must
+  // read as "not a model" rather than throwing.
+  const file = typeof version.atlas === 'string' ? version.atlas : ''
+  const extension = file.toLowerCase().split('.').pop() ?? ''
+  return MODEL_EXTENSIONS.includes(extension)
+}
+
+/**
+ * Whether a record's current version is a 3D model.
+ *
+ * The two viewports need opposite answers from one shared list, and
+ * `record.kind` cannot give either: the host files a record under the generator
+ * folder, so a model's kind is `prop` and a garment's is `shirt`. The version's
+ * own file is the discriminator.
+ */
+export function isModelRecord(record: ArtifactRecord | null): boolean {
+  if (!record) return false
+  return isModelVersion(currentVersion(record))
+}
+
 /**
  * Copy a version's atlas to `<project>/<slug>.png`, which is the file a user
  * hands to Roblox.

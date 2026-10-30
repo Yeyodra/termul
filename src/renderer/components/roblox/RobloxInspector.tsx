@@ -22,6 +22,8 @@ import { clipboardApi, openerApi } from '@/lib/api'
 import {
   type ArtifactRecord,
   currentVersion,
+  isModelRecord,
+  isModelVersion,
   type RecordVersion,
   saveModel,
   savePng
@@ -305,16 +307,6 @@ export function exportName(record: ArtifactRecord): string {
   return base || 'clothing'
 }
 
-/** The extensions a 3D version writes, as opposed to a garment's PNG atlas. */
-const MODEL_EXTENSIONS = ['glb', 'gltf', 'obj', 'stl']
-
-/** Whether one version holds a model file rather than a garment atlas. */
-function isModelVersion(version: RecordVersion): boolean {
-  if (version.model) return true
-  const extension = version.atlas.toLowerCase().split('.').pop() ?? ''
-  return MODEL_EXTENSIONS.includes(extension)
-}
-
 /**
  * What a model version's checks are.
  *
@@ -390,15 +382,6 @@ function ModelChecks({ version }: { version: RecordVersion }): React.JSX.Element
       )}
     </div>
   )
-}
-
-/** Whether a record holds a 3D model rather than a garment. */
-export function isModelRecord(record: ArtifactRecord | null): boolean {
-  if (!record) return false
-  const version = currentVersion(record)
-  if (version.model) return true
-  const extension = version.atlas.toLowerCase().split('.').pop() ?? ''
-  return MODEL_EXTENSIONS.includes(extension)
 }
 
 function UseIt({ record }: { record: ArtifactRecord | null }): React.JSX.Element {

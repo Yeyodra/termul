@@ -85,6 +85,7 @@ describe('ClothingViewport', () => {
       loaded: {},
       atlases: {},
       stills: {},
+      models: {},
       reading: {}
     })
   })
@@ -193,6 +194,49 @@ describe('ClothingViewport', () => {
 
     // The viewport and the Inspector both say it, so presence is what this
     // asserts rather than uniqueness.
+    expect((await screen.findAllByText(/Pick a garment/)).length).toBeGreaterThan(0)
+    expect(viewports.every((entry) => Object.keys(entry.atlases).length === 0)).toBe(true)
+  })
+
+  it('never puts a 3D model on the clothing page', async () => {
+    // One project holds both engines' records in one list. A model newer than the
+    // last garment took `records[0]` and the clothing page showed a prop.
+    mocks.loadArtifactRecords.mockResolvedValue([
+      {
+        slug: 'treasure-chest',
+        kind: 'prop',
+        current: 1,
+        createdAt: 2,
+        updatedAt: 2,
+        dir: '/p/.termul/generated/prop/treasure-chest',
+        itemPath: '/p/.termul/generated/prop/treasure-chest/item.json',
+        versions: [{ n: 1, at: 2, ok: true, kind: 'prop', atlas: 'v1.glb', model: 'v1.glb' }]
+      },
+      record('royal-robe')
+    ])
+    renderViewport()
+
+    const outfit = await lastOutfit()
+    // The garment is shown, and the model never reached the avatar.
+    expect(outfit.atlases.shirt).toBe('data:image/png;base64,AAAA')
+    expect(viewports.some((entry) => entry.name === 'treasure-chest')).toBe(false)
+  })
+
+  it('invites a pick when the project holds only models', async () => {
+    mocks.loadArtifactRecords.mockResolvedValue([
+      {
+        slug: 'treasure-chest',
+        kind: 'prop',
+        current: 1,
+        createdAt: 2,
+        updatedAt: 2,
+        dir: '/p/.termul/generated/prop/treasure-chest',
+        itemPath: '/p/.termul/generated/prop/treasure-chest/item.json',
+        versions: [{ n: 1, at: 2, ok: true, kind: 'prop', atlas: 'v1.glb', model: 'v1.glb' }]
+      }
+    ])
+    renderViewport()
+
     expect((await screen.findAllByText(/Pick a garment/)).length).toBeGreaterThan(0)
     expect(viewports.every((entry) => Object.keys(entry.atlases).length === 0)).toBe(true)
   })

@@ -16,6 +16,7 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   type ArtifactRecord,
   currentVersion,
+  isModelRecord,
   type RecordVersion,
   restoreVersion
 } from '@/lib/artifact-records'
@@ -172,18 +173,23 @@ export function ClothingViewport({ projectPath }: ClothingViewportProps): React.
   }, [load, projectPath])
 
   /**
-   * The record on screen: the pick, else the newest.
+   * The record on screen: the pick, else the newest garment.
    *
    * An explicit pick never silently becomes a different record. It used to fall
    * back to `records[0]` when the picked slug was not in the list yet, which is
    * the normal state right after a generation lands - the pick arrives before the
    * refresh does - so the page opened a garment the user never picked.
+   *
+   * Records are filtered to garments first: one project holds clothing and 3D
+   * models in the same list, so an unfiltered `records[0]` put a model on the
+   * clothing page as soon as a model was newer than the last garment.
    */
   const active = useMemo(() => {
     if (draft) return null
-    if (!records || records.length === 0) return null
-    if (!picked) return records[0] ?? null
-    return records.find((record) => record.slug === picked) ?? null
+    const garments = (records ?? []).filter((record) => !isModelRecord(record))
+    if (garments.length === 0) return null
+    if (!picked) return garments[0] ?? null
+    return garments.find((record) => record.slug === picked) ?? null
   }, [draft, records, picked])
 
   const atlas = useRecordAtlas(projectPath, active)

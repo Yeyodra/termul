@@ -14,7 +14,8 @@
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import type { ArtifactRecord, RecordVersion } from '@/lib/artifact-records'
-import { CLOTHING_TABS, isModelRecord, MODEL_TABS, RobloxInspector, TABS } from './RobloxInspector'
+import { isModelRecord } from '@/lib/artifact-records'
+import { CLOTHING_TABS, MODEL_TABS, RobloxInspector, TABS } from './RobloxInspector'
 
 const record = (version: Partial<RecordVersion> & { n: number }): ArtifactRecord => ({
   slug: 'treasure-chest',
