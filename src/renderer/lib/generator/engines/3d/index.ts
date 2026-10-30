@@ -124,12 +124,14 @@ export {
   TILE
 } from './sheet'
 export {
+  type AssetId,
   assembleLuau,
   assembleRigLuau,
   describeSend,
   insertLuau,
   jointsFor,
   modelClips,
+  PLACEHOLDER_ASSET_ID,
   partsForStudio,
   poseAt,
   rigForStudio,

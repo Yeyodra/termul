@@ -22,6 +22,7 @@ import {
   insertLuau,
   jointsFor,
   modelClips,
+  PLACEHOLDER_ASSET_ID,
   partsForStudio,
   poseAt,
   rigForStudio,
@@ -562,6 +563,26 @@ describe('insertLuau', () => {
       expect(code).toContain('LoadAsset(42)')
       expect(code).not.toContain('LoadAsset("42")')
     }
+  })
+
+  it('emits the placeholder bare in both paths, so the host can substitute it', () => {
+    // The Open Cloud path builds the script before the upload has an id, so it
+    // passes PLACEHOLDER_ASSET_ID and the host replaces it. Bare, not quoted:
+    // the substitution lands inside `LoadAsset(...)`.
+    const model = buildSpec(riggedSpec())
+    for (const code of [
+      insertLuau({ assetId: PLACEHOLDER_ASSET_ID, name: 'a', parts: [] }),
+      insertLuau({ assetId: PLACEHOLDER_ASSET_ID, name: 'b', rig: rigForStudio(model) })
+    ]) {
+      expect(code).toContain(`LoadAsset(${PLACEHOLDER_ASSET_ID})`)
+      expect(code).not.toContain(`LoadAsset("${PLACEHOLDER_ASSET_ID}")`)
+    }
+  })
+
+  it('uses the token the Rust uploader substitutes', () => {
+    // One string, two languages: a mismatch here means an upload succeeds and the
+    // insert script loads asset 0. The Rust side replaces exactly this token.
+    expect(PLACEHOLDER_ASSET_ID).toBe('{{ASSET_ID}}')
   })
 })
 

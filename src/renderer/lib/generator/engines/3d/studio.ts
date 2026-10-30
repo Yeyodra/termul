@@ -413,6 +413,31 @@ export const STUDIO_ACCESSORY_TYPES = [
 ] as const
 
 /**
+ * The token an insert script carries until Roblox has assigned a real id.
+ *
+ * An asset id does not exist until after the upload, so a caller that builds the
+ * script first — which is what the Open Cloud path does, because the id arrives
+ * from the host — cannot interpolate one. It emits this token instead, and the
+ * host substitutes it with the bare number before running the script.
+ */
+export const PLACEHOLDER_ASSET_ID = '{{ASSET_ID}}'
+
+/** An id that may still be a placeholder. */
+export type AssetId = number | typeof PLACEHOLDER_ASSET_ID
+
+/**
+ * Format an id for Luau.
+ *
+ * A number is emitted bare and truncated, so no quoting bug is possible. The
+ * placeholder is emitted bare too, which is what lets the host's substitution
+ * land inside `LoadAsset(...)` without quotes around it.
+ */
+function luauAssetId(assetId: AssetId): string {
+  if (assetId === PLACEHOLDER_ASSET_ID) return PLACEHOLDER_ASSET_ID
+  return String(Math.trunc(assetId))
+}
+
+/**
  * The non-rigged insert script (`assembleLuau`, `:541-643`).
  *
  * Three behaviours are load-bearing:
@@ -433,7 +458,7 @@ export function assembleLuau({
   parts,
   merge = false
 }: {
-  assetId: number
+  assetId: AssetId
   name: string
   category?: string
   kind?: string
@@ -452,7 +477,7 @@ export function assembleLuau({
   const attachmentName = attachment ?? (accessory ? ACCESSORY_BOUNDS[accessory]?.attachment : null)
 
   return `local InsertService = game:GetService("InsertService")
-local ok, loaded = pcall(function() return InsertService:LoadAsset(${Math.trunc(assetId)}) end)
+local ok, loaded = pcall(function() return InsertService:LoadAsset(${luauAssetId(assetId)}) end)
 if not ok then return "LOAD_FAILED: " .. tostring(loaded) end
 
 local PARTS = ${partsTable(parts)}
@@ -744,6 +769,8 @@ return string.format("Inserted %s %s: %d part(s), %d motor(s), %d weld(s)",
  * The outer wrapper that loads the uploaded asset (`insertLuau`, `:836-848`).
  *
  * The asset id is interpolated as a **number**, so no quoting bug is possible.
+ * It may also be [`PLACEHOLDER_ASSET_ID`], for a caller that builds the script
+ * before the upload has produced an id; the host substitutes the real one.
  * The body is wrapped in `pcall` and the failure is *returned* as a string, not
  * thrown: that is what lets `sendToStudio` keep the asset id when the insert
  * fails, which is invariant I5.
@@ -754,7 +781,7 @@ export function insertLuau({
   rig,
   ...rest
 }: {
-  assetId: number
+  assetId: AssetId
   name: string
   rig?: StudioRig | null
   category?: string
@@ -778,7 +805,7 @@ export function insertLuau({
   if (rig) {
     // The rig script is already complete; it only needs the load prologue.
     return `local InsertService = game:GetService("InsertService")
-local ok, loaded = pcall(function() return InsertService:LoadAsset(${Math.trunc(assetId)}) end)
+local ok, loaded = pcall(function() return InsertService:LoadAsset(${luauAssetId(assetId)}) end)
 if not ok then return "LOAD_FAILED: " .. tostring(loaded) end
 
 ${body}`
