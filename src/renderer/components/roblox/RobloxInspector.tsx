@@ -13,7 +13,7 @@
 
 import { useMemo, useState } from 'react'
 import { ChevronLeft, ChevronRight } from '@/components/icons'
-import { openerApi } from '@/lib/api'
+import { clipboardApi, openerApi } from '@/lib/api'
 import {
   type ArtifactRecord,
   currentVersion,
@@ -21,6 +21,7 @@ import {
   savePng
 } from '@/lib/artifact-records'
 import { type PaintReport, versionFacts } from '@/lib/roblox-inspector'
+import { recordPath } from '@/lib/roblox-record-path'
 import { cn } from '@/lib/utils'
 
 const TABS = ['Checks', 'Regions', 'Layers', 'Versions', 'Use it'] as const
@@ -279,13 +280,13 @@ export function exportName(record: ArtifactRecord): string {
 
 function UseIt({ record }: { record: ArtifactRecord | null }): React.JSX.Element {
   const [status, setStatus] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null)
-  const [busy, setBusy] = useState(false)
+  const [busy, setBusy] = useState<'save' | 'copy' | null>(null)
   const kind = record ? versionFacts(currentVersion(record)).type : 'shirt'
   const guide = UPLOAD_GUIDE[kind] ?? UPLOAD_GUIDE.shirt!
 
   const save = async (): Promise<void> => {
     if (!record || busy) return
-    setBusy(true)
+    setBusy('save')
     setStatus(null)
     try {
       const saved = await savePng(record)
@@ -293,7 +294,24 @@ function UseIt({ record }: { record: ArtifactRecord | null }): React.JSX.Element
     } catch (cause) {
       setStatus({ tone: 'bad', text: cause instanceof Error ? cause.message : String(cause) })
     } finally {
-      setBusy(false)
+      setBusy(null)
+    }
+  }
+
+  const copyPath = async (): Promise<void> => {
+    if (!record || busy) return
+    setBusy('copy')
+    setStatus(null)
+    try {
+      const path = recordPath(record)
+      const copied = await clipboardApi.writeText(path)
+      setStatus(
+        copied.success
+          ? { tone: 'ok', text: 'Copied the folder path.' }
+          : { tone: 'bad', text: `Could not copy: ${copied.error}` }
+      )
+    } finally {
+      setBusy(null)
     }
   }
 
@@ -304,11 +322,20 @@ function UseIt({ record }: { record: ArtifactRecord | null }): React.JSX.Element
       </p>
       <button
         type="button"
-        disabled={!record || busy}
+        disabled={!record || busy !== null}
         onClick={() => void save()}
         className="rounded border border-border px-2 py-1 text-[10.5px] text-secondary-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:opacity-40"
       >
-        {busy ? 'Saving…' : 'Save PNG to project'}
+        {busy === 'save' ? 'Saving…' : 'Save PNG to project'}
+      </button>
+      <button
+        type="button"
+        disabled={!record || busy !== null}
+        onClick={() => void copyPath()}
+        title={record ? recordPath(record) : undefined}
+        className="rounded border border-border px-2 py-1 text-[10.5px] text-secondary-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:opacity-40"
+      >
+        {busy === 'copy' ? 'Copying…' : 'Copy folder path'}
       </button>
       <button
         type="button"

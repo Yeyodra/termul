@@ -1,9 +1,12 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ArtifactRecord, RecordVersion } from '@/lib/artifact-records'
 import { RobloxInspector } from './RobloxInspector'
 
-const { savePngMock } = vi.hoisted(() => ({ savePngMock: vi.fn() }))
+const { savePngMock, writeTextMock } = vi.hoisted(() => ({
+  savePngMock: vi.fn(),
+  writeTextMock: vi.fn()
+}))
 
 vi.mock('@/lib/artifact-records', async () => {
   const actual =
@@ -12,7 +15,8 @@ vi.mock('@/lib/artifact-records', async () => {
 })
 
 vi.mock('@/lib/api', () => ({
-  openerApi: { openUrlWithSystemBrowser: vi.fn(async () => ({ success: true, data: undefined })) }
+  openerApi: { openUrlWithSystemBrowser: vi.fn(async () => ({ success: true, data: undefined })) },
+  clipboardApi: { writeText: writeTextMock }
 }))
 
 function version(n: number, overrides: Partial<RecordVersion> = {}): RecordVersion {
@@ -48,6 +52,11 @@ function record(overrides: Partial<ArtifactRecord> = {}): ArtifactRecord {
 }
 
 describe('RobloxInspector', () => {
+  beforeEach(() => {
+    savePngMock.mockReset()
+    writeTextMock.mockReset()
+  })
+
   it('invites a pick while nothing is selected', () => {
     render(<RobloxInspector record={null} version={null} paint={null} />)
     expect(screen.getByText(/Pick a garment/)).toBeInTheDocument()
@@ -165,6 +174,34 @@ describe('RobloxInspector', () => {
     fireEvent.click(screen.getByRole('button', { name: /Save PNG to project/ }))
 
     expect(await screen.findByText(/the project folder is gone/)).toBeInTheDocument()
+  })
+
+  it('copies the folder path without saving anything', async () => {
+    writeTextMock.mockResolvedValue({ success: true, data: undefined })
+    render(<RobloxInspector record={record()} version={version(1)} paint={null} />)
+    fireEvent.click(screen.getByRole('tab', { name: 'Use it' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Copy folder path' }))
+
+    expect(await screen.findByText('Copied the folder path.')).toBeInTheDocument()
+    expect(writeTextMock).toHaveBeenCalledWith('\\p\\.termul\\generated\\shirt\\royal-robe')
+    expect(savePngMock).not.toHaveBeenCalled()
+  })
+
+  it('says why the copy failed instead of claiming it worked', async () => {
+    writeTextMock.mockResolvedValue({ success: false, error: 'clipboard is locked' })
+    render(<RobloxInspector record={record()} version={version(1)} paint={null} />)
+    fireEvent.click(screen.getByRole('tab', { name: 'Use it' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Copy folder path' }))
+
+    expect(await screen.findByText(/Could not copy: clipboard is locked/)).toBeInTheDocument()
+  })
+
+  it('offers both actions once a garment is picked', () => {
+    render(<RobloxInspector record={record()} version={version(1)} paint={null} />)
+    fireEvent.click(screen.getByRole('tab', { name: 'Use it' }))
+
+    expect(screen.getByRole('button', { name: 'Copy folder path' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Save PNG to project' })).toBeEnabled()
   })
 
   it('hides the Regions tab for a t-shirt, which is one full-bleed graphic', () => {
