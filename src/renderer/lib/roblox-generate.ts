@@ -15,8 +15,10 @@
 
 import { invoke } from '@tauri-apps/api/core'
 import type { DesignType } from '@/lib/generator/engines/clothing/schema'
+import { ensureAgentForGeneration } from '@/lib/generator/ensure-agent'
 import {
   type GenerateClothingResult,
+  type OutfitCompanion,
   queueGenerateClothing,
   readClothingResult
 } from '@/lib/generator/tools/generate-clothing'
@@ -36,6 +38,8 @@ export interface StartOptions {
   type: DesignType
   /** The record this generation revises, when it revises one. */
   recordSlug?: string
+  /** Garments already worn, so the new one is designed to match them. */
+  companions?: OutfitCompanion[]
 }
 
 export interface SavedArtifact {
@@ -64,6 +68,7 @@ export function startPageGeneration({
   prompt,
   type,
   recordSlug,
+  companions,
   onLayer
 }: StartOptions & { onLayer?: LayerProgress }): PageGeneration {
   const deps = pageGenerator()
@@ -71,7 +76,7 @@ export function startPageGeneration({
     return { status: 'unavailable', reason: 'the generator engine is not ready yet' }
   }
   deps.clothing.onLayer = onLayer
-  const accepted = queueGenerateClothing(deps.clothing, { type, prompt, recordSlug })
+  const accepted = queueGenerateClothing(deps.clothing, { type, prompt, recordSlug, companions })
   return { status: 'queued', taskId: accepted.taskId }
 }
 
@@ -141,11 +146,21 @@ export type RunOutcome =
  * record still lands on disk and the collection still refreshes.
  */
 export async function runPageGeneration(options: RunOptions): Promise<RunOutcome> {
+  // The engine is a model call, so it needs a live agent. Nothing else spawns one
+  // for a feature page, which is why a cold window failed with "no ACP agent is
+  // running" and waiting never helped. `ensureAgentForGeneration` reuses a live
+  // agent when there is one, so this does not bill a second process.
+  const agent = await ensureAgentForGeneration(options.projectPath)
+  if (agent.status === 'none') {
+    return { status: 'failed', error: agent.reason }
+  }
+
   const started = startPageGeneration({
     projectPath: options.projectPath,
     prompt: options.prompt,
     type: options.type,
     recordSlug: options.recordSlug,
+    companions: options.companions,
     onLayer: options.onLayer
   })
   if (started.status === 'unavailable') {

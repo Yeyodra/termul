@@ -141,6 +141,17 @@ fn generate_tool(family: &Family) -> Tool {
             "description": "Optional: a complete spec instead of a prompt, which skips the authoring stage and goes straight to build and review."
         }),
     );
+    properties.insert(
+        "record_slug".to_string(),
+        json!({
+            "type": "string",
+            "description": "Optional: revise this existing record instead of creating a new one. \
+                            Pass the slug of the item the user wants changed - it is the folder name \
+                            under .termul/generated/<kind>/ and the `slug` field of the previous \
+                            reply. The new design lands as the next version of that item, keeping \
+                            its history. Leave it out to create a new item."
+        }),
+    );
 
     let description = format!(
         "Generate a {}. Returns a task id at once; the artifact takes minutes, so poll \

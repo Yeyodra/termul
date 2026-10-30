@@ -103,6 +103,100 @@ describe('generate_clothing tool contract', () => {
     const message = firstMessage({ type: 'shirt', prompt: 'x' })
     expect(message.text).not.toContain('Robloxkit session context')
   })
+
+  it('says nothing about an outfit when there are no companions', () => {
+    const message = firstMessage({ type: 'pants', prompt: 'blue jeans' })
+    expect(message.text).not.toContain('worn with others')
+  })
+
+  it('says nothing about an outfit when the companion list is empty', () => {
+    const message = firstMessage({ type: 'pants', prompt: 'blue jeans', companions: [] })
+    expect(message.text).not.toContain('worn with others')
+  })
+
+  it('hands the model the garments already worn, so the new one matches', () => {
+    const message = firstMessage({
+      type: 'pants',
+      prompt: 'matching trousers',
+      companions: [
+        {
+          type: 'shirt',
+          name: 'green floral',
+          design: { type: 'shirt', layers: [{ kind: 'solid' }] }
+        }
+      ]
+    })
+
+    expect(message.text).toContain('worn with others')
+    expect(message.text).toContain('shirt "green floral"')
+    expect(message.text).toContain('"kind":"solid"')
+  })
+
+  it('keeps the instruction before the outfit block, so the ask stays first', () => {
+    const message = firstMessage({
+      type: 'pants',
+      prompt: 'matching trousers',
+      companions: [{ type: 'shirt', name: 'green floral', design: { type: 'shirt' } }]
+    })
+
+    expect(message.text.indexOf('Design a pants')).toBeLessThan(
+      message.text.indexOf('worn with others')
+    )
+  })
+
+  it('does not double the full stop on a prompt that ends one', () => {
+    const message = firstMessage({
+      type: 'shirt',
+      prompt:
+        'Revise the existing garment "robe" (v2). Keep the same name, so this lands as a new version of the same item.'
+    })
+    expect(message.text).not.toContain('item..')
+  })
+
+  it('still ends a bare prompt with one full stop', () => {
+    const message = firstMessage({ type: 'shirt', prompt: 'a racing jacket' })
+    expect(message.text).toContain('Design a shirt: a racing jacket.')
+  })
+
+  it('sends a small companion design whole', () => {
+    const message = firstMessage({
+      type: 'pants',
+      companions: [
+        { type: 'shirt', name: 'plain', design: { type: 'shirt', layers: [{ kind: 'solid' }] } }
+      ]
+    })
+    expect(message.text).toContain('"kind":"solid"')
+    expect(message.text).not.toContain('summarised')
+  })
+
+  it('summarises a companion design too big to send, keeping what it must match', () => {
+    const big = {
+      type: 'shirt',
+      background: '#cfe6f7',
+      layers: Array.from({ length: 60 }, (_, index) => ({
+        id: `l${index}`,
+        target: index % 2 ? 'torso_front' : 'all',
+        kind: index % 3 ? 'shape' : 'trim',
+        color: index % 2 ? '#fff4d6' : '#a8cbe8',
+        outline: '#ffffff',
+        outlineWidth: 3,
+        x: 0.1,
+        y: 0.2,
+        w: 0.3,
+        h: 0.4
+      }))
+    }
+    const message = firstMessage({
+      type: 'pants',
+      companions: [{ type: 'shirt', name: 'busy', design: big }]
+    })
+
+    expect(message.text).toContain('summarised')
+    expect(message.text).toContain('60 layers')
+    expect(message.text).toContain('#fff4d6')
+    expect(message.text).toContain('torso_front')
+    expect(message.text.length).toBeLessThan(4000)
+  })
 })
 
 describe('generate_clothing end to end', () => {

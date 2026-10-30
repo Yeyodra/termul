@@ -13,11 +13,15 @@ const { mocks } = vi.hoisted(() => ({
     readClothingResult: vi.fn(),
     invoke: vi.fn(),
     isTauri: { value: true },
-    refreshLoadedProjects: vi.fn()
+    refreshLoadedProjects: vi.fn(),
+    ensureAgentForGeneration: vi.fn()
   }
 }))
 
 vi.mock('@/lib/generator-gateway', () => ({ pageGenerator: mocks.pageGenerator }))
+vi.mock('@/lib/generator/ensure-agent', () => ({
+  ensureAgentForGeneration: mocks.ensureAgentForGeneration
+}))
 vi.mock('@/lib/generator/tools/generate-clothing', () => ({
   queueGenerateClothing: mocks.queueGenerateClothing,
   readClothingResult: mocks.readClothingResult
@@ -114,10 +118,38 @@ describe('saveArtifact', () => {
 describe('runPageGeneration', () => {
   beforeEach(() => {
     mocks.pageGenerator.mockReturnValue(DEPS)
+    mocks.queueGenerateClothing.mockReset()
     mocks.queueGenerateClothing.mockReturnValue({ taskId: 'task-1', status: 'queued' })
     mocks.readClothingResult.mockReset()
     mocks.invoke.mockReset()
     mocks.isTauri.value = true
+    mocks.ensureAgentForGeneration.mockReset()
+    mocks.ensureAgentForGeneration.mockResolvedValue({ status: 'ready', agentId: 'agent-1' })
+  })
+
+  it('starts an agent before queueing, so a cold page is not told there is none', async () => {
+    mocks.readClothingResult.mockReturnValue({ status: 'done', taskId: 'task-1', stage: 'Done' })
+    mocks.invoke.mockResolvedValue({ slug: 'x', version: 1, path: '', relative: '', itemPath: '' })
+
+    await runPageGeneration({ projectPath: '/p', prompt: 'a tee', type: 'shirt' })
+
+    expect(mocks.ensureAgentForGeneration).toHaveBeenCalledWith('/p')
+    expect(mocks.queueGenerateClothing).toHaveBeenCalledTimes(1)
+  })
+
+  it('refuses with the reason when no agent could be started', async () => {
+    mocks.ensureAgentForGeneration.mockResolvedValue({
+      status: 'none',
+      reason: 'No agent is configured yet. Add one in Settings, then try again.'
+    })
+
+    const outcome = await runPageGeneration({ projectPath: '/p', prompt: 'a tee', type: 'shirt' })
+
+    expect(outcome).toEqual({
+      status: 'failed',
+      error: 'No agent is configured yet. Add one in Settings, then try again.'
+    })
+    expect(mocks.queueGenerateClothing).not.toHaveBeenCalled()
   })
 
   it('polls to done, then saves what came out', async () => {

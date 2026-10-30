@@ -106,6 +106,9 @@ async function dispatch(deps: GeneratorHandlerDeps, call: GeneratorCall): Promis
       type,
       prompt: typeof args.prompt === 'string' ? args.prompt : undefined,
       design: spec,
+      // How an agent revises a garment instead of making a second one. Without
+      // it, "change the colour" produced a new record with an empty history.
+      recordSlug: typeof args.record_slug === 'string' ? args.record_slug : undefined,
       agentId: call.agentId,
       sessionId: call.sessionId
     })

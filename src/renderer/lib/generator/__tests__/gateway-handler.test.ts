@@ -66,6 +66,32 @@ describe('createGeneratorHandler', () => {
     expect(reply.ok).toBe(true)
   })
 
+  it('carries record_slug through, so an agent can revise a garment', async () => {
+    const { handler, queue } = harness()
+
+    await handler(
+      call('generate_clothing', {
+        type: 'shirt',
+        prompt: 'make it purple',
+        record_slug: 'baju-tentara-perang'
+      })
+    )
+
+    const task = queue.get((queue.list()[0] ?? { id: '' }).id)
+    expect((task?.params as { recordSlug?: string } | undefined)?.recordSlug).toBe(
+      'baju-tentara-perang'
+    )
+  })
+
+  it('leaves record_slug absent for a fresh garment', async () => {
+    const { handler, queue } = harness()
+
+    await handler(call('generate_clothing', { type: 'shirt', prompt: 'a new shirt' }))
+
+    const task = queue.get((queue.list()[0] ?? { id: '' }).id)
+    expect((task?.params as { recordSlug?: string } | undefined)?.recordSlug).toBeUndefined()
+  })
+
   it('reports an unknown task id instead of throwing', async () => {
     const { handler } = harness()
 

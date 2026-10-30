@@ -49,6 +49,23 @@ export interface GenerateClothingArgs {
    * Apply; absent for a fresh garment.
    */
   recordSlug?: string
+  /**
+   * The garments already in the outfit, so this one can be made to match.
+   *
+   * Only ever set when the user turns "match outfit" on. RobloxKit has no such
+   * feature - its prompt is `Design a <type>: <prompt>` and nothing else - so an
+   * automatic version mixed a fresh garment with whatever else the project held,
+   * which is why this is opt-in rather than the default.
+   */
+  companions?: OutfitCompanion[]
+}
+
+/** One garment already worn, as the model needs it to match a new one. */
+export interface OutfitCompanion {
+  type: DesignType
+  name: string
+  /** The current version's design, straight from `item.json`. */
+  design: unknown
 }
 
 /** What the tool returns before the work is done. */
@@ -140,10 +157,68 @@ export function firstMessage(args: GenerateClothingArgs, studio?: SessionStudio)
       `Fix this ${args.type} design JSON and return the whole corrected design:\n\`\`\`json\n${JSON.stringify(args.design, null, 2)}\n\`\`\``
     )
   } else {
-    parts.push(`Design a ${args.type}: ${args.prompt ?? 'anything that fits the garment'}.`)
+    const ask = (args.prompt ?? 'anything that fits the garment').trim()
+    parts.push(`Design a ${args.type}: ${endsSentence(ask) ? ask : `${ask}.`}`)
+  }
+
+  if (args.companions?.length) {
+    const worn = args.companions.map(describeCompanion).join('\n')
+    parts.push(
+      `This garment is worn with others, so it has to look like one outfit. Match their colours, motifs and style:\n${worn}`
+    )
   }
 
   return { role: 'user', text: parts.join('\n\n') }
+}
+
+function endsSentence(text: string): boolean {
+  return /[.!?]$/.test(text)
+}
+
+/** A design longer than this is summarised: two full ones cost 18k characters. */
+const COMPANION_JSON_LIMIT = 1200
+
+/**
+ * One companion as a line the model can match against.
+ *
+ * A real garment is up to 40 layers, so the full design is sent only while it is
+ * small. Past the limit, the colours, the layer kinds and what they paint are
+ * what "make it match" needs, and the per-layer geometry is what costs tokens.
+ */
+function describeCompanion(one: OutfitCompanion): string {
+  const full = JSON.stringify(one.design)
+  if (full.length <= COMPANION_JSON_LIMIT) return `- ${one.type} "${one.name}": ${full}`
+
+  const design = (one.design ?? {}) as {
+    background?: unknown
+    layers?: Array<{
+      kind?: unknown
+      target?: unknown
+      color?: unknown
+      color2?: unknown
+      color3?: unknown
+    }>
+  }
+  const colors = new Set<string>()
+  const kinds = new Set<string>()
+  const targets = new Set<string>()
+  for (const layer of design.layers ?? []) {
+    for (const value of [layer.color, layer.color2, layer.color3]) {
+      if (typeof value === 'string') colors.add(value)
+    }
+    if (typeof layer.kind === 'string') kinds.add(layer.kind)
+    if (typeof layer.target === 'string') targets.add(layer.target)
+  }
+  if (typeof design.background === 'string') colors.add(design.background)
+
+  const summary = {
+    background: design.background ?? null,
+    layers: design.layers?.length ?? 0,
+    kinds: [...kinds],
+    targets: [...targets],
+    colors: [...colors]
+  }
+  return `- ${one.type} "${one.name}" (${summary.layers} layers, summarised): ${JSON.stringify(summary)}`
 }
 
 /** What the model is told to judge during the checking stage. */
