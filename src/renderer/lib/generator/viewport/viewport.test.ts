@@ -52,7 +52,7 @@ describe('the artifact registry', () => {
 describe('a garment scene', () => {
   it('wraps the avatar in one group and disposes it', async () => {
     const scene = await buildArtifactScene(
-      { kind: 'clothing', type: 'shirt', atlas: ATLAS, name: 'Royal Robe' },
+      { kind: 'clothing', atlases: { shirt: ATLAS }, primary: 'shirt', name: 'Royal Robe' },
       async () => document.createElement('canvas')
     )
     expect(scene.objects).toHaveLength(1)
@@ -62,9 +62,42 @@ describe('a garment scene', () => {
 
   it('labels an unnamed garment by its type and body', async () => {
     const scene = await buildArtifactScene(
-      { kind: 'clothing', type: 'pants', atlas: ATLAS },
+      { kind: 'clothing', atlases: { pants: ATLAS }, primary: 'pants' },
       async () => document.createElement('canvas')
     )
     expect(scene.label).toBe('pants on the avatar')
+  })
+
+  it('dresses one avatar with every garment in the outfit', async () => {
+    const worn: string[] = []
+    const scene = await buildArtifactScene(
+      { kind: 'clothing', atlases: { shirt: ATLAS, pants: ATLAS }, primary: 'shirt' },
+      async (src) => {
+        worn.push(src)
+        return document.createElement('canvas')
+      }
+    )
+    expect(worn).toHaveLength(2)
+    expect(scene.objects).toHaveLength(1)
+  })
+
+  it('names every garment worn, with the primary first', async () => {
+    const scene = await buildArtifactScene(
+      {
+        kind: 'clothing',
+        atlases: { shirt: ATLAS, pants: ATLAS, tshirt: ATLAS },
+        primary: 'pants'
+      },
+      async () => document.createElement('canvas')
+    )
+    expect(scene.label).toBe('pants + shirt + tshirt on the avatar')
+  })
+
+  it('skips a slot whose atlas could not be read', async () => {
+    const scene = await buildArtifactScene(
+      { kind: 'clothing', atlases: { shirt: ATLAS, pants: '' }, primary: 'shirt' },
+      async () => document.createElement('canvas')
+    )
+    expect(scene.label).toBe('shirt on the avatar')
   })
 })

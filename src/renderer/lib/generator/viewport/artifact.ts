@@ -23,7 +23,7 @@ import {
 } from 'three'
 import { OBJLoader } from 'three/addons/loaders/OBJLoader.js'
 import { STLLoader } from 'three/addons/loaders/STLLoader.js'
-import { buildAvatar } from '../engines/clothing/avatar/avatar'
+import { buildAvatar, type GarmentTextures } from '../engines/clothing/avatar/avatar'
 import type { Rig } from '../engines/clothing/avatar/rig'
 import type { DesignType } from '../engines/clothing/schema'
 
@@ -36,11 +36,24 @@ export interface ArtifactScene {
   label: string
 }
 
-export interface ClothingArtifact {
+/**
+ * One avatar wearing one or more garments.
+ *
+ * An outfit rather than a single garment, because Roblox itself dresses a
+ * character from several assets at once: a shirt, a pair of pants and a T-shirt
+ * are three uploads worn together. `atlases` is therefore a map, and every slot
+ * that has a picture is filled.
+ *
+ * `primary` names the garment the page is *about* - the row the user picked. The
+ * node pipeline, the Inspector and the facts bar all read that one record, so an
+ * outfit stays a view of one item even when it is drawn with others.
+ */
+export interface OutfitArtifact {
   kind: 'clothing'
-  type: DesignType
-  /** The flat atlas the engine rendered, as a data URL. */
-  atlas: string
+  /** One atlas per garment worn. `shirt` and `tshirt` are separate layers. */
+  atlases: Partial<Record<DesignType, string>>
+  /** The garment the page describes; the rest are worn for context. */
+  primary: DesignType
   name?: string
   rig?: Rig
   skin?: string
@@ -69,7 +82,7 @@ export interface TextureArtifact {
   name?: string
 }
 
-export type Artifact = ClothingArtifact | MeshArtifact | SkyboxArtifact | TextureArtifact
+export type Artifact = OutfitArtifact | MeshArtifact | SkyboxArtifact | TextureArtifact
 
 /** Decoding is injectable so the registry can be tested without real pixels. */
 export type Decode = (src: string) => Promise<CanvasImageSource>
@@ -84,20 +97,39 @@ function loadImage(src: string): Promise<CanvasImageSource> {
 }
 
 async function buildClothing(
-  artifact: ClothingArtifact,
+  artifact: OutfitArtifact,
   decode: Decode = loadImage
 ): Promise<ArtifactScene> {
-  const atlas = await decode(artifact.atlas)
+  const worn = Object.entries(artifact.atlases).filter(
+    (entry): entry is [DesignType, string] => typeof entry[1] === 'string' && entry[1].length > 0
+  )
+  const decoded = await Promise.all(
+    worn.map(async ([type, src]) => [type, (await decode(src)) as HTMLCanvasElement] as const)
+  )
+  const clothes: GarmentTextures = {}
+  for (const [type, canvas] of decoded) clothes[type] = canvas
+
   const avatar = buildAvatar({
     rig: artifact.rig ?? 'R15',
     skin: artifact.skin,
-    clothes: { [artifact.type]: atlas as HTMLCanvasElement }
+    clothes
   })
   return {
     objects: [avatar.group],
     dispose: () => avatar.dispose(),
-    label: artifact.name?.trim() || `${artifact.type} on the avatar`
+    label:
+      artifact.name?.trim() ||
+      outfitLabel(
+        worn.map(([type]) => type),
+        artifact.primary
+      )
   }
+}
+
+/** `primary` leads: the caption answers "what am I looking at", not "what else is on". */
+function outfitLabel(worn: DesignType[], primary: DesignType): string {
+  const ordered = [primary, ...worn.filter((type) => type !== primary)]
+  return `${ordered.join(' + ')} on the avatar`
 }
 
 /** Meshes arrive as text; the loaders return a group the viewport can frame. */
