@@ -12,7 +12,7 @@
  */
 
 import { useEffect, useMemo } from 'react'
-import { type ArtifactRecord, currentVersion } from '@/lib/artifact-records'
+import { type ArtifactRecord, currentVersion, restoreVersion } from '@/lib/artifact-records'
 import { ArtifactViewportPanel } from '@/lib/generator/viewport/ArtifactViewportPanel'
 import type { MeshArtifact } from '@/lib/generator/viewport/artifact'
 import {
@@ -21,6 +21,7 @@ import {
   useRobloxRecordsStore
 } from '@/stores/roblox-records-store'
 import { usePickedSlug } from '@/stores/roblox-selection-store'
+import { MODEL_TABS, RobloxInspector } from './RobloxInspector'
 
 interface ModelViewportProps {
   projectPath: string
@@ -30,6 +31,7 @@ export function ModelViewport({ projectPath }: ModelViewportProps): React.JSX.El
   const records = useProjectRecords(projectPath)
   const picked = usePickedSlug(projectPath)
   const load = useRobloxRecordsStore((state) => state.load)
+  const refresh = useRobloxRecordsStore((state) => state.refresh)
 
   useEffect(() => {
     load(projectPath)
@@ -64,6 +66,19 @@ export function ModelViewport({ projectPath }: ModelViewportProps): React.JSX.El
     }
   }, [model, active, version])
 
+  /**
+   * Move the pointer, then re-read the project so the viewport, the collection
+   * row and the Inspector all follow from one source. A refusal is thrown, not
+   * swallowed: the Versions tab shows the reason, and a silent failure would
+   * leave the user thinking the restore worked.
+   */
+  const handleRestore = async (n: number): Promise<void> => {
+    if (!active) return
+    const outcome = await restoreVersion(active, n)
+    if (!outcome.ok) throw new Error(outcome.message)
+    refresh(projectPath)
+  }
+
   const placeholder = active
     ? `Reading v${version?.n ?? 1}.`
     : records?.length
@@ -71,40 +86,51 @@ export function ModelViewport({ projectPath }: ModelViewportProps): React.JSX.El
       : 'Describe a model in the chat and the agent will build it.'
 
   return (
-    <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-      <div className="relative flex min-h-0 flex-1 flex-col">
-        <ArtifactViewportPanel
-          artifact={artifact}
-          placeholder={placeholder}
-          className="min-h-0 flex-1"
-        />
+    <div className="flex h-full min-h-0 min-w-0 flex-1 overflow-hidden">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <div className="relative flex min-h-0 flex-1 flex-col">
+          <ArtifactViewportPanel
+            artifact={artifact}
+            placeholder={placeholder}
+            className="min-h-0 flex-1"
+          />
+        </div>
+        {active && version ? (
+          <dl className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-t border-border/60 px-3 py-2 text-2xs text-muted-foreground">
+            <div className="flex gap-1">
+              <dt>Name</dt>
+              <dd className="truncate">{active.slug}</dd>
+            </div>
+            <div className="flex gap-1">
+              <dt>Checks</dt>
+              <dd className={version.ok === false ? 'text-destructive' : 'text-success'}>
+                {version.ok === false ? 'failed' : 'ready'}
+              </dd>
+            </div>
+            <div className="flex gap-1">
+              <dt>Versions</dt>
+              <dd className="tabular-nums">{active.versions.length}</dd>
+            </div>
+            <div className="flex gap-1">
+              <dt>Current</dt>
+              <dd className="tabular-nums">v{version.n}</dd>
+            </div>
+            <div className="flex min-w-0 gap-1">
+              <dt>File</dt>
+              <dd className="truncate font-mono">{version.model ?? version.atlas}</dd>
+            </div>
+          </dl>
+        ) : null}
       </div>
-      {active && version ? (
-        <dl className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-t border-border/60 px-3 py-2 text-2xs text-muted-foreground">
-          <div className="flex gap-1">
-            <dt>Name</dt>
-            <dd className="truncate">{active.slug}</dd>
-          </div>
-          <div className="flex gap-1">
-            <dt>Checks</dt>
-            <dd className={version.ok === false ? 'text-destructive' : 'text-success'}>
-              {version.ok === false ? 'failed' : 'ready'}
-            </dd>
-          </div>
-          <div className="flex gap-1">
-            <dt>Versions</dt>
-            <dd className="tabular-nums">{active.versions.length}</dd>
-          </div>
-          <div className="flex gap-1">
-            <dt>Current</dt>
-            <dd className="tabular-nums">v{version.n}</dd>
-          </div>
-          <div className="flex min-w-0 gap-1">
-            <dt>File</dt>
-            <dd className="truncate font-mono">{version.model ?? version.atlas}</dd>
-          </div>
-        </dl>
-      ) : null}
+
+      <RobloxInspector
+        record={active}
+        version={version}
+        paint={null}
+        onRestore={handleRestore}
+        tabs={MODEL_TABS}
+        emptyHint="Generate a model, then pick it in the Roblox panel to inspect it."
+      />
     </div>
   )
 }

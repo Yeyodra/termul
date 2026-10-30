@@ -386,8 +386,30 @@ export function modelFormat(file: string): 'glb' | 'obj' | 'stl' {
  * wrong the moment the project moves or another person opens it.
  */
 export async function savePng(record: ArtifactRecord): Promise<string> {
+  return copyArtifactToProject(record, currentVersion(record).atlas, 'png')
+}
+
+/**
+ * Copy a version's model to `<project>/<slug>.<ext>`, which is the file a user
+ * hands to Studio's 3D Importer or to Roblox.
+ *
+ * Same reasoning as `savePng`: the model is already on disk inside the record,
+ * so this is a copy, not a re-export. The extension follows the version's own
+ * file name, so a GLB stays a GLB and an OBJ stays an OBJ.
+ */
+export async function saveModel(record: ArtifactRecord): Promise<string> {
   const version = currentVersion(record)
-  const source = joinPath(record.dir, version.atlas)
+  const file = version.model ?? version.atlas
+  return copyArtifactToProject(record, file, modelFormat(file))
+}
+
+/** Shared body of the two save helpers: one copy into the project root. */
+async function copyArtifactToProject(
+  record: ArtifactRecord,
+  file: string,
+  extension: string
+): Promise<string> {
+  const source = joinPath(record.dir, file)
 
   const marker = record.dir.lastIndexOf('/.termul/')
   const root = marker > 0 ? record.dir.slice(0, marker) : record.dir
@@ -396,12 +418,12 @@ export async function savePng(record: ArtifactRecord): Promise<string> {
     .replace(/[^a-z0-9_-]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 40)
-  const relative = `${name || 'clothing'}.png`
+  const relative = `${name || 'clothing'}.${extension}`
   const target = joinPath(root, relative)
 
   const written = await filesystemApi.copyFile(source, target)
   if (!written.success) {
-    throw new Error(written.error ?? 'could not write the PNG')
+    throw new Error(written.error ?? `could not write the ${extension.toUpperCase()}`)
   }
   return relative
 }

@@ -1,5 +1,5 @@
 /**
- * The Inspector: what the current garment version actually is.
+ * The Inspector: what the current version actually is.
  *
  * Five tabs over data the host already wrote, so nothing here waits on a
  * generation. "Painted" is the one live number: it needs the atlas pixels, so
@@ -9,6 +9,11 @@
  * Collapsible (O4): at 1024px the viewport is the scarce resource, and folding
  * 236px of Inspector back into it matters more than the 6px that separated the
  * two collection layouts ever did.
+ *
+ * **The tab set is a prop, not a module constant.** Three of the five tabs read
+ * garment facts (`design.type`, `layers`, `regions`), so a 3D record would show
+ * them empty. A second engine needs its own set, and a constant cannot be
+ * changed by a caller.
  */
 
 import { useMemo, useState } from 'react'
@@ -18,14 +23,21 @@ import {
   type ArtifactRecord,
   currentVersion,
   type RecordVersion,
+  saveModel,
   savePng
 } from '@/lib/artifact-records'
 import { type PaintReport, versionFacts } from '@/lib/roblox-inspector'
 import { recordPath } from '@/lib/roblox-record-path'
 import { cn } from '@/lib/utils'
 
-const TABS = ['Checks', 'Regions', 'Layers', 'Versions', 'Use it'] as const
-export type TabId = (typeof TABS)[number]
+/** The clothing tabs, which is what an existing caller gets. */
+export const CLOTHING_TABS = ['Checks', 'Regions', 'Layers', 'Versions', 'Use it'] as const
+/** The 3D tabs: no regions or layers, because a model has neither. */
+export const MODEL_TABS = ['Checks', 'Versions', 'Use it'] as const
+
+export type TabId = (typeof CLOTHING_TABS)[number] | (typeof MODEL_TABS)[number] | 'Scene'
+
+export const TABS = CLOTHING_TABS
 
 const TAB_CLASS =
   'inline-flex h-[22px] items-center rounded px-1.5 text-[10px] text-muted-foreground transition-colors duration-150 ease-out hover:bg-muted hover:text-foreground'
@@ -268,6 +280,19 @@ const UPLOAD_GUIDE: Record<string, { label: string; url: string }> = {
   }
 }
 
+/**
+ * Where a 3D model is published.
+ *
+ * A model *can* be uploaded by an app — unlike classic clothing — but that needs
+ * an Open Cloud key the user has to supply, so the handoff below is the path
+ * that works today: save the GLB, then import it in Studio. The dashboard tab is
+ * where a user manages the resulting asset.
+ */
+const MODEL_GUIDE = {
+  label: 'Creator Dashboard',
+  url: 'https://create.roblox.com/dashboard/creations?activeTab=Model'
+}
+
 /** The file name RobloxKit uses: the slug, lowercased, capped. */
 export function exportName(record: ArtifactRecord): string {
   const base = String(record.slug || 'clothing')
@@ -278,18 +303,38 @@ export function exportName(record: ArtifactRecord): string {
   return base || 'clothing'
 }
 
+/** The extensions a 3D version writes, as opposed to a garment's PNG atlas. */
+const MODEL_EXTENSIONS = ['glb', 'gltf', 'obj', 'stl']
+
+/**
+ * Whether a record holds a 3D model rather than a garment.
+ *
+ * Decided by the version's own file, not by `record.kind`: the host files a
+ * record under the generator folder, so `kind` is the folder name and would say
+ * `prop` for a model but `shirt` for a garment — while the reliable signal is
+ * whether the version wrote a model file at all.
+ */
+export function isModelRecord(record: ArtifactRecord | null): boolean {
+  if (!record) return false
+  const version = currentVersion(record)
+  if (version.model) return true
+  const extension = version.atlas.toLowerCase().split('.').pop() ?? ''
+  return MODEL_EXTENSIONS.includes(extension)
+}
+
 function UseIt({ record }: { record: ArtifactRecord | null }): React.JSX.Element {
   const [status, setStatus] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null)
   const [busy, setBusy] = useState<'save' | 'copy' | null>(null)
+  const model = isModelRecord(record)
   const kind = record ? versionFacts(currentVersion(record)).type : 'shirt'
-  const guide = UPLOAD_GUIDE[kind] ?? UPLOAD_GUIDE.shirt!
+  const guide = model ? MODEL_GUIDE : (UPLOAD_GUIDE[kind] ?? UPLOAD_GUIDE.shirt!)
 
   const save = async (): Promise<void> => {
     if (!record || busy) return
     setBusy('save')
     setStatus(null)
     try {
-      const saved = await savePng(record)
+      const saved = model ? await saveModel(record) : await savePng(record)
       setStatus({ tone: 'ok', text: `Saved ${saved}.` })
     } catch (cause) {
       setStatus({ tone: 'bad', text: cause instanceof Error ? cause.message : String(cause) })
@@ -318,7 +363,9 @@ function UseIt({ record }: { record: ArtifactRecord | null }): React.JSX.Element
   return (
     <div className="flex flex-col gap-2">
       <p className="text-[10.5px] leading-relaxed text-muted-foreground">
-        Roblox does not let apps publish classic clothing: the upload is yours.
+        {model
+          ? 'A model can be imported straight into Studio, or uploaded as a Roblox asset.'
+          : 'Roblox does not let apps publish classic clothing: the upload is yours.'}
       </p>
       <button
         type="button"
@@ -326,7 +373,7 @@ function UseIt({ record }: { record: ArtifactRecord | null }): React.JSX.Element
         onClick={() => void save()}
         className="rounded border border-border px-2 py-1 text-[10.5px] text-secondary-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:opacity-40"
       >
-        {busy === 'save' ? 'Saving…' : 'Save PNG to project'}
+        {busy === 'save' ? 'Saving…' : model ? 'Save GLB to project' : 'Save PNG to project'}
       </button>
       <button
         type="button"
@@ -344,12 +391,20 @@ function UseIt({ record }: { record: ArtifactRecord | null }): React.JSX.Element
       >
         Open {guide.label}
       </button>
-      <ol className="m-0 flex list-decimal flex-col gap-1 pl-4 text-3xs leading-relaxed text-muted-foreground">
-        <li>Save the PNG above.</li>
-        <li>Open the dashboard tab for this kind.</li>
-        <li>Upload the file as a classic garment.</li>
-        <li>Set it for sale, then wear it in Studio.</li>
-      </ol>
+      {model ? (
+        <ol className="m-0 flex list-decimal flex-col gap-1 pl-4 text-3xs leading-relaxed text-muted-foreground">
+          <li>Save the GLB above.</li>
+          <li>In Studio, open the 3D Importer and choose the file.</li>
+          <li>Set its scale, then insert it into the place.</li>
+        </ol>
+      ) : (
+        <ol className="m-0 flex list-decimal flex-col gap-1 pl-4 text-3xs leading-relaxed text-muted-foreground">
+          <li>Save the PNG above.</li>
+          <li>Open the dashboard tab for this kind.</li>
+          <li>Upload the file as a classic garment.</li>
+          <li>Set it for sale, then wear it in Studio.</li>
+        </ol>
+      )}
       {status && (
         <p
           className={cn(
@@ -372,6 +427,16 @@ interface RobloxInspectorProps {
   /** Which tab is open, so a node in the pipeline can drive it. */
   tab?: TabId
   onTabChange?: (tab: TabId) => void
+  /**
+   * Which sections this engine has.
+   *
+   * Defaults to the clothing set, so an existing caller is unchanged. A 3D page
+   * passes `MODEL_TABS`: a model has no regions and no layers, and those tabs
+   * would read garment facts and render empty.
+   */
+  tabs?: readonly TabId[]
+  /** What to say when there is nothing to inspect, per engine. */
+  emptyHint?: string
 }
 
 export function RobloxInspector({
@@ -380,7 +445,9 @@ export function RobloxInspector({
   paint,
   onRestore,
   tab: controlledTab,
-  onTabChange
+  onTabChange,
+  tabs = CLOTHING_TABS,
+  emptyHint = 'Pick a garment in the Roblox panel to inspect it.'
 }: RobloxInspectorProps): React.JSX.Element {
   const [open, setOpen] = useState(true)
   const [ownTab, setOwnTab] = useState<TabId>('Checks')
@@ -391,8 +458,9 @@ export function RobloxInspector({
   }
   // A t-shirt is one full-bleed graphic, so a per-region breakdown says nothing
   // the engine itself does not skip (`check.ts` skips it for the same reason).
-  const regionsApply = !version || versionFacts(version).type !== 'tshirt'
-  const visibleTabs: readonly TabId[] = regionsApply ? TABS : TABS.filter((id) => id !== 'Regions')
+  const regionsApply =
+    tabs.includes('Regions') && (!version || versionFacts(version).type !== 'tshirt')
+  const visibleTabs: readonly TabId[] = regionsApply ? tabs : tabs.filter((id) => id !== 'Regions')
   const activeTab: TabId = visibleTabs.includes(tab) ? tab : 'Checks'
 
   if (!open) {
@@ -452,9 +520,7 @@ export function RobloxInspector({
 
       <div className="min-h-0 flex-1 overflow-y-auto px-2.5 pt-2 pb-3">
         {!record || !version ? (
-          <p className="text-[10.5px] text-muted-foreground">
-            Pick a garment in the Roblox panel to inspect it.
-          </p>
+          <p className="text-[10.5px] text-muted-foreground">{emptyHint}</p>
         ) : (
           <>
             <p className="mb-0.5 text-xs font-semibold">{version.prompt?.trim() || record.slug}</p>
