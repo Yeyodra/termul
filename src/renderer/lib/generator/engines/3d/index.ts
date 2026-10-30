@@ -83,3 +83,18 @@ export {
   type TextureSpec,
   validateSpec
 } from './schema'
+export {
+  disposeRenderer,
+  renderReviewSheets,
+  renderThumbnail,
+  SHEET1_BACKDROP,
+  SHEET1_QUALITY,
+  SHEET1_VIEWS,
+  SHEET2_BACKDROP,
+  SHEET2_CLOSEUPS,
+  SHEET2_QUALITY,
+  SHEET2_WALK,
+  sheetCount,
+  sheetLayout,
+  TILE
+} from './sheet'
