@@ -1,0 +1,44 @@
+/**
+ * The 3D engine: a JSON spec in, geometry and a review sheet out.
+ *
+ * Reference: `re/full-reverse/08-3d-polyforge/REPORT.md` (engine A, the spec
+ * path) and `re/full-reverse/15-3d-full-system/` for the export/Studio path.
+ *
+ * Only the pieces that exist so far are exported; `build`, `check`, `sheet`,
+ * `prompt`, `export` and `studio` join them as they land.
+ */
+export {
+  EXPR_FUNCTION_NAMES,
+  EXPR_FUNCTIONS,
+  evaluate,
+  numberOr,
+  numbersOr,
+  type ParamValues
+} from './expr'
+export {
+  ACCESSORY_TYPES,
+  BOOLEAN_OPS,
+  CATEGORIES,
+  CONTAINER_TYPES,
+  checkRig,
+  EXTRA_LIMITS,
+  LIMITS,
+  type ModelSpec,
+  NODE_TYPES,
+  normalizeSpec,
+  type PaletteEntry,
+  type ParamSpec,
+  PRIMITIVE_TYPES,
+  paramValues,
+  R6_JOINTS,
+  R15_JOINTS,
+  RIG_JOINTS,
+  RIGS,
+  SHAPES,
+  type ShapeSpec,
+  type SkeletonEntry,
+  type SpecNode,
+  TEMPLATE_IDS,
+  type TextureSpec,
+  validateSpec
+} from './schema'
