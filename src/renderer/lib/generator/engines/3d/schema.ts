@@ -641,6 +641,19 @@ export function validateSpec(spec: unknown): string[] {
       scalar(`${field}.scale`, n.scale)
     }
 
+    // `array` and `mirror` are expanded by the builder's `group` branch only, so
+    // on any other type they were accepted here and then silently dropped: a
+    // `box` with `array.count: 9` built one part, not nine. Reject them instead,
+    // and say what to do, because the failure is otherwise invisible.
+    if (n.type !== 'group') {
+      if (n.array) {
+        fail(`${field}.array`, 'only a "group" can repeat; wrap the node in a group')
+      }
+      if (n.mirror) {
+        fail(`${field}.mirror`, 'only a "group" can mirror; wrap the node in a group')
+      }
+    }
+
     switch (n.type) {
       case 'group': {
         if (!Array.isArray(n.children) || !n.children.length) {

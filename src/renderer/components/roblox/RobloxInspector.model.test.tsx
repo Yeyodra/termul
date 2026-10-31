@@ -15,7 +15,11 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@/lib/tauri-roblox', () => ({
-  robloxApi: { openCloudStatus: vi.fn(), uploadModel: vi.fn() }
+  robloxApi: {
+    openCloudStatus: vi.fn(),
+    uploadModel: vi.fn(),
+    saveOpenCloudKey: vi.fn()
+  }
 }))
 
 import type { ArtifactRecord, RecordVersion } from '@/lib/artifact-records'
@@ -26,6 +30,7 @@ import { CLOTHING_TABS, MODEL_TABS, RobloxInspector, TABS } from './RobloxInspec
 
 const mockedStatus = vi.mocked(robloxApi.openCloudStatus)
 const mockedUpload = vi.mocked(robloxApi.uploadModel)
+const mockedSaveKey = vi.mocked(robloxApi.saveOpenCloudKey)
 
 const record = (version: Partial<RecordVersion> & { n: number }): ArtifactRecord => ({
   slug: 'treasure-chest',
@@ -430,5 +435,75 @@ describe('the Checks tab, per kind', () => {
     )
     expect(screen.getByText(/classic template/)).toBeInTheDocument()
     expect(screen.queryByText('A 3D model, not a garment')).toBeNull()
+  })
+})
+
+describe('the Open Cloud key form', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockedStatus.mockResolvedValue({
+      success: true,
+      data: { configured: false, reason: null, userId: null }
+    })
+  })
+
+  const open = (): void => {
+    const active = record({ n: 1, model: 'v1.glb', design: R15_HERO_EXAMPLE })
+    render(
+      <RobloxInspector
+        record={active}
+        version={active.versions[0]}
+        paint={null}
+        tabs={MODEL_TABS}
+        tab="Use it"
+        studioId="studio-abc"
+      />
+    )
+  }
+
+  it('offers somewhere to paste a key, which the app had nowhere to do', () => {
+    open()
+    expect(screen.getByRole('button', { name: 'Add an Open Cloud key' })).toBeInTheDocument()
+  })
+
+  it('saves the key and the numeric creator id together', async () => {
+    mockedSaveKey.mockResolvedValue({
+      success: true,
+      data: { configured: true, reason: null, userId: '834159885' }
+    })
+    open()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add an Open Cloud key' }))
+    fireEvent.change(screen.getByLabelText(/Open Cloud key/), { target: { value: 'abc-key-123' } })
+    fireEvent.change(screen.getByLabelText(/numeric Roblox user id/), {
+      target: { value: '834159885' }
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save key' }))
+
+    await waitFor(() => expect(mockedSaveKey).toHaveBeenCalledWith('abc-key-123', '834159885'))
+    expect(await screen.findByText(/Key saved/)).toBeInTheDocument()
+  })
+
+  it('shows why Roblox refused the key instead of accepting it silently', async () => {
+    mockedSaveKey.mockResolvedValue({
+      success: false,
+      error: 'API Key does not exist.',
+      code: 'KEY_REJECTED'
+    })
+    open()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add an Open Cloud key' }))
+    fireEvent.change(screen.getByLabelText(/Open Cloud key/), { target: { value: 'bad' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save key' }))
+
+    expect(await screen.findByText('API Key does not exist.')).toBeInTheDocument()
+  })
+
+  it('is not offered on a garment, which has no upload', () => {
+    const active = garment()
+    render(
+      <RobloxInspector record={active} version={active.versions[0]} paint={null} tab="Use it" />
+    )
+    expect(screen.queryByRole('button', { name: 'Add an Open Cloud key' })).toBeNull()
   })
 })

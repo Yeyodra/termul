@@ -31,6 +31,7 @@ import {
 import { type PaintReport, versionFacts } from '@/lib/roblox-inspector'
 import { recordPath } from '@/lib/roblox-record-path'
 import { uploadModelRecord, uploadReadiness } from '@/lib/roblox-upload'
+import { robloxApi } from '@/lib/tauri-roblox'
 import { cn } from '@/lib/utils'
 
 /** The clothing tabs, which is what an existing caller gets. */
@@ -385,6 +386,104 @@ function ModelChecks({ version }: { version: RecordVersion }): React.JSX.Element
   )
 }
 
+/**
+ * The one place a user can paste an Open Cloud key.
+ *
+ * The upload refuses with "no key is saved" and points at the dashboard, but there
+ * was nowhere in the app to put the key - so the feature was unusable from the UI
+ * even once everything behind it worked. Collapsed by default: it is a one-time
+ * step, not something to look at every time.
+ *
+ * The key is validated by Roblox through introspect on save, so a wrong paste is
+ * refused here with the reason instead of failing later on an upload.
+ */
+function KeySetup({ onSaved }: { onSaved: () => void }): React.JSX.Element {
+  const [open, setOpen] = useState(false)
+  const [key, setKey] = useState('')
+  const [userId, setUserId] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const save = async (): Promise<void> => {
+    if (!key.trim() || busy) return
+    setBusy(true)
+    setError(null)
+    try {
+      const saved = await robloxApi.saveOpenCloudKey(key.trim(), userId.trim() || undefined)
+      if (!saved.success) {
+        setError(saved.error)
+        return
+      }
+      setKey('')
+      setUserId('')
+      setOpen(false)
+      onSaved()
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="self-start text-3xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+      >
+        Add an Open Cloud key
+      </button>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-1 rounded border border-border/60 p-2">
+      <label className="text-3xs text-muted-foreground" htmlFor="opencloud-key">
+        Open Cloud key (create.roblox.com → Credentials → API Keys, with asset:write)
+      </label>
+      <input
+        id="opencloud-key"
+        type="password"
+        value={key}
+        onChange={(event) => setKey(event.target.value)}
+        placeholder="paste the key"
+        className="h-7 rounded border border-border/60 bg-card px-2 font-mono text-2xs"
+      />
+      <label className="text-3xs text-muted-foreground" htmlFor="opencloud-user">
+        Your numeric Roblox user id
+      </label>
+      <input
+        id="opencloud-user"
+        type="text"
+        inputMode="numeric"
+        value={userId}
+        onChange={(event) => setUserId(event.target.value)}
+        placeholder="e.g. 834159885"
+        className="h-7 rounded border border-border/60 bg-card px-2 font-mono text-2xs"
+      />
+      <div className="flex gap-1">
+        <button
+          type="button"
+          disabled={!key.trim() || busy}
+          onClick={() => void save()}
+          className="rounded border border-border px-2 py-1 text-3xs transition-colors hover:bg-secondary disabled:opacity-40"
+        >
+          {busy ? 'Checking…' : 'Save key'}
+        </button>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => setOpen(false)}
+          className="rounded px-2 py-1 text-3xs text-muted-foreground hover:text-foreground"
+        >
+          Cancel
+        </button>
+      </div>
+      {error && <p className="text-3xs leading-relaxed text-destructive">{error}</p>}
+    </div>
+  )
+}
 function UseIt({
   record,
   studioId
@@ -501,6 +600,11 @@ function UseIt({
         >
           {busy === 'upload' ? 'Uploading…' : 'Upload to Roblox'}
         </button>
+      )}
+      {model && (
+        <KeySetup
+          onSaved={() => setStatus({ tone: 'ok', text: 'Key saved. Press Upload to Roblox.' })}
+        />
       )}
       {model ? (
         <ol className="m-0 flex list-decimal flex-col gap-1 pl-4 text-3xs leading-relaxed text-muted-foreground">

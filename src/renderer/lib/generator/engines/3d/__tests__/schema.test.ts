@@ -506,6 +506,18 @@ describe('validateSpec - the J limits', () => {
     expect(validateSpec(spec([group(65)]))).toContain('parts[0].array.count: at most 64')
   })
 
+  it('rejects array and mirror on a node the builder will not expand', () => {
+    expect(
+      validateSpec(spec([{ type: 'box', size: [1, 1, 1], array: { count: 9, step: [2, 0, 0] } }]))
+    ).toContain('parts[0].array: only a "group" can repeat; wrap the node in a group')
+    expect(validateSpec(spec([{ type: 'box', size: [1, 1, 1], mirror: 'x' }]))).toContain(
+      'parts[0].mirror: only a "group" can mirror; wrap the node in a group'
+    )
+    expect(
+      validateSpec(spec([{ type: 'sphere', radius: 1, array: { count: 2, step: [1, 0, 0] } }]))
+    ).toContain('parts[0].array: only a "group" can repeat; wrap the node in a group')
+  })
+
   it('rejects a non-radial array with no step, using the tuple message', () => {
     // `array.step ?? []` is validated, so the message is `must be [3 numbers]`
     // rather than a dedicated "step is required" string (`08` 15 B3).
