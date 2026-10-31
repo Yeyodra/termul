@@ -177,3 +177,58 @@ export function paintReport(type: DesignType, painted: Record<string, number>): 
           .map((region) => region.id)
   return { painted: regions.length - empty.length, total: regions.length, empty }
 }
+
+/** What a 3D version's checks reported, as far as this build can read them. */
+export interface ModelReport {
+  ok?: boolean
+  triangles?: number
+  size?: number[]
+  parts?: number
+  issues?: Array<{ level: string; message: string }>
+}
+
+/** The facts the model pipeline shows, all read from the version's own report. */
+export interface ModelFacts {
+  parts: number
+  triangles: number
+  trianglesLabel: string
+  sizeLabel: string
+  /** Whether the model carries a skeleton, which decides rig vs shape. */
+  rigged: boolean
+  rig: string
+  joints: number
+  colours: number
+}
+
+/**
+ * The facts a 3D version carries, or zeros when its report is missing.
+ *
+ * A version saved before the checks were kept has no report, and the pipeline
+ * still has to render: zeros and an em dash say "unknown" instead of inventing a
+ * number the model does not have.
+ */
+export function modelFacts(report: ModelReport | null | undefined): ModelFacts {
+  const triangles = typeof report?.triangles === 'number' ? report.triangles : 0
+  const size = Array.isArray(report?.size) ? report.size : []
+  const parts = typeof report?.parts === 'number' ? report.parts : 0
+  const spec = report as
+    | { rig?: unknown; skeleton?: unknown[]; palette?: unknown }
+    | null
+    | undefined
+  const rig = typeof spec?.rig === 'string' ? spec.rig : ''
+  const joints = Array.isArray(spec?.skeleton) ? spec.skeleton.length : 0
+  const palette = spec?.palette
+  const colours = palette && typeof palette === 'object' ? Object.keys(palette as object).length : 0
+
+  return {
+    parts,
+    triangles,
+    trianglesLabel: triangles > 0 ? triangles.toLocaleString() : '—',
+    sizeLabel: size.length === 3 ? size.map((value) => value.toFixed(1)).join(' × ') : '—',
+    // A custom or R15/R6 rig is a skeleton; anything else is a shape.
+    rigged: joints > 0 || (rig !== '' && rig !== 'none'),
+    rig,
+    joints,
+    colours
+  }
+}

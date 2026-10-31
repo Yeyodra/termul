@@ -112,4 +112,40 @@ describe('ensureAgentForGeneration', () => {
       'Could not start Claude Agent: malformed spawn_agent payload'
     )
   })
+
+  it('picks the config the user selected by its configId', async () => {
+    // A catalog config: its local id is a uuid, its configId is the catalog name.
+    const catalog = {
+      id: 'uuid-1111',
+      configId: 'claude',
+      name: 'Claude Agent',
+      command: '/usr/bin/claude',
+      args: [],
+      env: {},
+      allowTerminal: false
+    }
+    const other = { ...catalog, id: 'uuid-2222', configId: 'codex', name: 'Codex' }
+    mocks.agentConfigs = [other, catalog]
+    // The store holds a configId, so matching only the local id missed and the
+    // first config won - a harness the user had not picked.
+    mocks.selectedAgentConfigId = 'claude'
+
+    await ensureAgentForGeneration('/p')
+
+    const sent = mocks.spawnAgent.mock.calls[0]![0] as Record<string, unknown>
+    expect(sent.name).toBe('Claude Agent')
+    expect(sent.configId).toBe('claude')
+  })
+
+  it('keeps a spawn addressable when the config has no configId', async () => {
+    mocks.agentConfigs = [{ ...STORED, configId: undefined }]
+    mocks.selectedAgentConfigId = null
+
+    await ensureAgentForGeneration('/p')
+
+    const sent = mocks.spawnAgent.mock.calls[0]![0] as Record<string, unknown>
+    // The reuse map is keyed by configId; an empty one makes the spawn
+    // unfindable, and the next turn reports "no ACP agent is running".
+    expect(sent.configId).toBe('local-abc')
+  })
 })

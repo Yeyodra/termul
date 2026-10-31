@@ -34,7 +34,14 @@ function configToSpawn(configs: StoredAgentConfig[]): StoredAgentConfig | null {
   const state = useAcpStore.getState()
   const selected = state.selectedAgentConfigId
   if (selected) {
-    const match = configs.find((config) => config.id === selected)
+    // `selectedAgentConfigId` holds a configId, not the stored `id`. Matching only
+    // `id` missed every catalog config (whose local id is a uuid), fell through to
+    // `configs[0]`, and spawned a harness the user had not picked - and the
+    // generator then could not resolve that spawn back, so the turn failed with
+    // "no ACP agent is running" even though a process had just started.
+    const match =
+      configs.find((config) => config.configId === selected) ??
+      configs.find((config) => config.id === selected)
     if (match) return match
   }
   return configs[0] ?? null
@@ -51,7 +58,11 @@ function configToSpawn(configs: StoredAgentConfig[]): StoredAgentConfig | null {
  */
 function spawnFields(config: StoredAgentConfig): AgentConfig {
   return {
-    configId: config.configId,
+    // The reuse map is keyed by configId, so a spawn that leaves it empty can
+    // never be found again: the process starts, the map records nothing usable,
+    // and the next resolution reports "no ACP agent is running". Falling back to
+    // the local id keeps a spawn addressable for a config that never had one.
+    configId: config.configId ?? config.id,
     name: config.name,
     command: config.command,
     args: config.args,

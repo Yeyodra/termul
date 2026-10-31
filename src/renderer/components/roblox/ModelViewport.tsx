@@ -13,7 +13,7 @@
  * cannot appear without its colours.
  */
 
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRobloxStudioStatus } from '@/hooks/use-roblox-studio-status'
 import { type ArtifactRecord, currentVersion, restoreVersion } from '@/lib/artifact-records'
 import { ArtifactViewportPanel } from '@/lib/generator/viewport/ArtifactViewportPanel'
@@ -22,7 +22,8 @@ import { useProjectRecords, useRobloxRecordsStore } from '@/stores/roblox-record
 import { isPicked, pickSlug, useIsDraft, usePickedSlug } from '@/stores/roblox-selection-store'
 import { progressLine, useStage } from '@/stores/roblox-stage-store'
 import { ModelComposer } from './ModelComposer'
-import { MODEL_TABS, RobloxInspector } from './RobloxInspector'
+import { ModelPipeline } from './ModelPipeline'
+import { MODEL_TABS, RobloxInspector, type TabId } from './RobloxInspector'
 
 interface ModelViewportProps {
   projectPath: string
@@ -33,6 +34,7 @@ export function ModelViewport({ projectPath }: ModelViewportProps): React.JSX.El
   const picked = usePickedSlug(projectPath)
   const draft = useIsDraft(projectPath)
   const stage = useStage(projectPath)
+  const [tab, setTab] = useState<TabId>('Checks')
   const load = useRobloxRecordsStore((state) => state.load)
   const refresh = useRobloxRecordsStore((state) => state.refresh)
   // The upload needs the open place's handle, and the same poll that feeds the
@@ -122,6 +124,14 @@ export function ModelViewport({ projectPath }: ModelViewportProps): React.JSX.El
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-1 overflow-hidden">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        {active && version ? (
+          <ModelPipeline
+            record={active}
+            version={version}
+            stage={stage}
+            onOpenTab={(next) => setTab(next)}
+          />
+        ) : null}
         <div className="relative flex min-h-0 flex-1 flex-col">
           <ArtifactViewportPanel
             artifact={artifact}
@@ -173,6 +183,8 @@ export function ModelViewport({ projectPath }: ModelViewportProps): React.JSX.El
         paint={null}
         onRestore={handleRestore}
         tabs={MODEL_TABS}
+        tab={tab}
+        onTabChange={setTab}
         emptyHint="Generate a model, then pick it in the Roblox panel to inspect it."
         studioId={studio?.studioId ?? null}
       />
