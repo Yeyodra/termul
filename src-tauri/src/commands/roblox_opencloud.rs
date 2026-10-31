@@ -22,18 +22,22 @@ use crate::roblox::opencloud::{
     CreateAssetRequest, OpenCloudClient, API_KEY_ACCOUNT, USER_ID_ACCOUNT,
 };
 
-/// A key that is not UUID-shaped is not an Open Cloud key.
+/// A key that could be an Open Cloud key.
 ///
-/// The dashboard issues `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`. Checking the
-/// shape here catches the mistake that actually happened in practice: pasting a
-/// session JWT (which is much longer and starts with a base64 prefix) instead of
-/// an API key. A rejection that names the shape is faster than a 401 later.
+/// This used to require the UUID shape (`8-4-4-4-12` hex), which was wrong twice
+/// over: the dashboard also issues longer opaque strings, so a real key was
+/// rejected at save time, and a UUID-shaped string that is not a key at all was
+/// accepted and only failed later with a bare 401.
+///
+/// The only authority on whether a key is real is Roblox's own introspect
+/// endpoint, so this checks nothing about the shape beyond "something was
+/// pasted". `introspect_api_key` is what actually decides, and it says why.
 fn looks_like_api_key(value: &str) -> bool {
     let trimmed = value.trim();
-    let groups: Vec<&str> = trimmed.split('-').collect();
-    groups.len() == 5
-        && groups.iter().map(|group| group.len()).eq([8, 4, 4, 4, 12])
-        && trimmed.chars().all(|character| character.is_ascii_hexdigit() || character == '-')
+    // Long enough to be a whole credential, and pasted as one piece. Both key
+    // shapes the dashboard issues are far longer than this; a truncated paste is
+    // the mistake this catches.
+    trimmed.len() >= 30 && !trimmed.chars().any(char::is_whitespace)
 }
 
 /// Whether a key is stored, without revealing it.
@@ -86,22 +90,41 @@ pub fn roblox_opencloud_status() -> IpcResult<OpenCloudStatus> {
     }
 }
 
-/// Store an Open Cloud key, rejecting anything that cannot be one.
+/// Store an Open Cloud key, after Roblox confirms it exists and may write assets.
+///
+/// The check is a real request to the introspect endpoint, not a shape test. A
+/// shape test cannot tell a real key from a session token, and it rejected the
+/// longer key format the dashboard also issues - so a valid key was refused at
+/// save time while an invalid UUID-shaped string was accepted and only failed
+/// later with a bare 401.
 ///
 /// `user_id` is optional here so a user can save the key first and the creator
 /// second. An upload refuses without both, but refusing at save time would mean
 /// losing a key the user already has to hand.
 #[tauri::command]
-pub fn roblox_opencloud_save_key(
+pub async fn roblox_opencloud_save_key(
     key: String,
     user_id: Option<String>,
 ) -> IpcResult<OpenCloudStatus> {
     if !looks_like_api_key(&key) {
         return IpcResult::error(
-            "That does not look like an Open Cloud API key. It is a 36-character UUID from \
-             create.roblox.com → Credentials, not a session token.",
+            "That does not look like a key that was pasted whole. Copy it again from \
+             create.roblox.com → Credentials → API Keys.",
             "NOT_AN_API_KEY",
         );
+    }
+
+    // Roblox decides, not a shape test: it is the only party that knows whether
+    // this string is a key and what the key may do.
+    let info = match crate::roblox::opencloud::OpenCloudClient::new(key.trim()) {
+        Ok(client) => match client.introspect().await {
+            Ok(info) => info,
+            Err(reason) => return IpcResult::error(reason, "KEY_REJECTED"),
+        },
+        Err(reason) => return IpcResult::error(reason, "CLIENT_UNAVAILABLE"),
+    };
+    if let Some(blocker) = info.upload_blocker() {
+        return IpcResult::error(blocker, "KEY_NOT_USABLE");
     }
 
     let creator = user_id.map(|value| value.trim().to_string());
@@ -304,17 +327,26 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_uuid_is_accepted_as_an_api_key() {
+    fn a_uuid_shaped_key_is_still_accepted() {
         assert!(looks_like_api_key(
             "0f1e2d3c-4b5a-6978-8a9b-0c1d2e3f4a5b"
         ));
     }
 
+    /// The dashboard also issues long opaque strings. Requiring the UUID shape
+    /// rejected those at save time, so a real key could not be stored at all.
     #[test]
-    fn a_session_jwt_is_rejected_by_shape() {
-        // The mistake this guard exists for: a RobloxInternal JWT is far longer
-        // and is not dash-grouped, so it can never be mistaken for a key.
-        assert!(!looks_like_api_key(
+    fn a_long_opaque_key_is_accepted_because_roblox_decides() {
+        let long = "qQkzL3I4YU2MbTBA+9GLQOcigtpQO1py1tEJU8wpb633npEWZXIKaGJHY2lPaUpTVXpJMU5pSXNJbXRwWkNJNkluTnBaeTB5TURJeExUQTNMVEV6VkRFNE9qVXhPalE1V2lJc0luUjVjQ0k2SWtwWFZDSjkuZXlKaGRXUWlPaUpTYjJKc2IzaEpiblJsY201aGJDSXNJbWx6Y3lJNklrTnNiM1ZrUVhWMGFHVnVkR2xqWVhScGIyNVRaWEoyYVdObElpd2lZbUZ6WlVGd2FVdGxlU0k2SWxSQmVIZDBNemxVYjFWSE4xWTJNRWN5Y2l0aWNuSmhXVzlRUnpZekt6azBhbnBSUzBoWWFtZzVRbTQ0U2taWGJTSXNJbTkzYm1WeVNXUWlPaUk0TXpReE5UazRPRFVpTENKbGVIQWlPakUzT1RNek56RTNNakVzSW1saGRDSTZNVGM1TXpNMk9ERXlNU3dpYm1KbUlqb3hOemt6TXpZNE1USXhmUS5vR2pITlVEYVpPUV9USC1kelhpSUNmUlFuREVhLWxaRzhCRnZraTVVYThoTWY2MmZuOFd0cUdsajdySkp2TnltN3JQcGM3emoxcXhtSjM1S1J3UURoUkxteGFxbEFFWlRkb1ZGMXg0QVFlYlpsN3piUkU3VEJ0ZU9ibnhmaDdsSlUzRFloWG5hUXhuOC1EeFBOMXpEUVVvQnlSX0hFRGdyRFBPUWxpeXVIS2VCZzdZOC11ZjA5V1JjSTU0eEdlenJJQnhfMVctS3BpbGlZWkxUb3k0RGJ5OWhhR2MxZkdyeGRRT2MycEFXNXF4WThpQjdLRktEOUlRbjFrNzBpc0FiaFVwb1ItS0lXNkw4TE56SXc2UWcwbUhkRjZ6LXNqcEpCa1pfMDhtVTdIekl3bWJhdE11QUJXbUFVWV9mcE1iTlZieS1KNWxPaF9CM2ZHUmdfX01HelE=";
+        assert!(looks_like_api_key(long));
+    }
+
+    /// A shape test cannot tell a session token from a key, which is why the save
+    /// path asks Roblox instead. This one is long enough to pass the paste check
+    /// and is rejected by introspect with "API Key does not exist".
+    #[test]
+    fn the_paste_check_alone_does_not_claim_a_key_is_valid() {
+        assert!(looks_like_api_key(
             "TAxwt39ToUG7V60G2r+brraYoPG63+94jzQKHXjh9Bn8JFWmZXlKaGJHY2lPaUpTVXpJMU5pSXNJbXRwWkNJNkluTnBaeTB5TURJeExUQTNMVEV6VkRFNE9qVXhPalE1V2lJc0luUjVjQ0k2SWtwWFZDSjku"
         ));
     }
@@ -328,10 +360,8 @@ mod tests {
     }
 
     #[test]
-    fn a_uuid_with_non_hex_characters_is_rejected() {
-        assert!(!looks_like_api_key(
-            "zzzzzzzz-4b5a-6978-8a9b-0c1d2e3f4a5b"
-        ));
+    fn a_value_with_spaces_inside_is_not_a_pasted_key() {
+        assert!(!looks_like_api_key("0f1e 2d3c 4b5a 6978 8a9b"));
     }
 
     #[test]
@@ -339,5 +369,60 @@ mod tests {
         assert!(looks_like_api_key(
             "  0f1e2d3c-4b5a-6978-8a9b-0c1d2e3f4a5b  "
         ));
+    }
+
+    #[test]
+    fn a_key_without_the_asset_scope_says_which_permission_is_missing() {
+        let info = crate::roblox::opencloud::ApiKeyInfo {
+            name: "termul".into(),
+            authorized_user_id: Some(834159885),
+            enabled: true,
+            expired: false,
+            scopes: vec![crate::roblox::opencloud::ApiKeyScope {
+                name: "universe-datastores.objects".into(),
+                operations: vec!["create".into()],
+            }],
+        };
+        let blocker = info.upload_blocker().expect("blocked");
+        assert!(blocker.contains("asset:write"), "{blocker}");
+    }
+
+    #[test]
+    fn a_key_with_asset_write_may_upload() {
+        let info = crate::roblox::opencloud::ApiKeyInfo {
+            name: "termul".into(),
+            authorized_user_id: Some(834159885),
+            enabled: true,
+            expired: false,
+            scopes: vec![crate::roblox::opencloud::ApiKeyScope {
+                name: "asset".into(),
+                operations: vec!["write".into()],
+            }],
+        };
+        assert!(info.upload_blocker().is_none());
+    }
+
+    #[test]
+    fn a_disabled_or_expired_key_says_so() {
+        let base = crate::roblox::opencloud::ApiKeyInfo {
+            name: "k".into(),
+            authorized_user_id: None,
+            enabled: true,
+            expired: false,
+            scopes: vec![crate::roblox::opencloud::ApiKeyScope {
+                name: "asset".into(),
+                operations: vec!["write".into()],
+            }],
+        };
+        let disabled = crate::roblox::opencloud::ApiKeyInfo {
+            enabled: false,
+            ..base.clone()
+        };
+        let expired = crate::roblox::opencloud::ApiKeyInfo {
+            expired: true,
+            ..base
+        };
+        assert!(disabled.upload_blocker().unwrap().contains("disabled"));
+        assert!(expired.upload_blocker().unwrap().contains("expired"));
     }
 }

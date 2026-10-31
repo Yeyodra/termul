@@ -461,3 +461,65 @@ async fn an_empty_key_is_refused_when_the_client_is_built() {
     let error = OpenCloudClient::new("   ").unwrap_err();
     assert!(error.contains("API key"), "{error}");
 }
+
+#[tokio::test]
+async fn introspect_reports_the_scopes_a_key_really_has() {
+    let (base, server) = serve(vec![Reply::ok(
+        r#"{"name":"termul","authorizedUserId":834159885,"enabled":true,"expired":false,
+            "scopes":[{"name":"asset","operations":["write"]}]}"#,
+    )])
+    .await;
+
+    let info = OpenCloudClient::new("test-key")
+        .expect("client")
+        .with_introspect_url(format!("{base}/api-keys/v1/introspect"))
+        .introspect()
+        .await
+        .expect("introspect");
+
+    assert_eq!(info.name, "termul");
+    assert_eq!(info.authorized_user_id, Some(834159885));
+    assert!(info.can_write_assets());
+    assert!(info.upload_blocker().is_none());
+
+    let observed = server.await.unwrap();
+    assert_eq!(observed[0].method, "POST");
+    assert_eq!(observed[0].path, "/api-keys/v1/introspect");
+    // The key travels in the body, not a header: that is the endpoint's contract.
+    assert!(observed[0].body_text().contains("test-key"));
+}
+
+#[tokio::test]
+async fn a_key_that_does_not_exist_is_reported_as_such() {
+    let (base, server) = serve(vec![Reply::status(
+        404,
+        r#"{"code":5,"message":"API Key does not exist."}"#,
+    )])
+    .await;
+
+    let error = OpenCloudClient::new("not-a-key")
+        .expect("client")
+        .with_introspect_url(format!("{base}/api-keys/v1/introspect"))
+        .introspect()
+        .await
+        .unwrap_err();
+
+    assert!(error.contains("does not exist"), "{error}");
+    let _ = server.await;
+}
+
+#[tokio::test]
+async fn introspect_never_echoes_the_key_it_was_given() {
+    let secret = "super-secret-key-value-0123456789";
+    let (base, server) = serve(vec![Reply::status(401, r#"{"message":"no"}"#)]).await;
+
+    let error = OpenCloudClient::new(secret)
+        .expect("client")
+        .with_introspect_url(format!("{base}/api-keys/v1/introspect"))
+        .introspect()
+        .await
+        .unwrap_err();
+
+    assert!(!error.contains(secret), "the key leaked into the error: {error}");
+    let _ = server.await;
+}

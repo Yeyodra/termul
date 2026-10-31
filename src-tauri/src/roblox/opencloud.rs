@@ -1,4 +1,4 @@
-//! Roblox Open Cloud: uploading a generated model as a Model asset.
+﻿//! Roblox Open Cloud: uploading a generated model as a Model asset.
 //!
 //! This is the half of the 3D Studio path that Termul was missing. `studio.ts`
 //! already knows how to build the GLB, decide `merge`, emit both Luau scripts and
@@ -8,9 +8,9 @@
 //! The API is `POST https://apis.roblox.com/assets/v1/assets` with an
 //! `x-api-key` header and a `multipart/form-data` body carrying two parts:
 //!
-//!  * `request` — JSON: `assetType`, `displayName`, `description` and
+//!  * `request` â€” JSON: `assetType`, `displayName`, `description` and
 //!    `creationContext.creator.{userId|groupId}`
-//!  * `fileContent` — the model file itself
+//!  * `fileContent` â€” the model file itself
 //!
 //! The response is a long-running operation. It either carries the asset id
 //! directly or a `path` to poll at `https://apis.roblox.com/cloud/v2/{path}`
@@ -30,6 +30,8 @@ use serde::{Deserialize, Serialize};
 pub const CREATE_ASSET_URL: &str = "https://apis.roblox.com/assets/v1/assets";
 /// The prefix a polled operation `path` is appended to.
 pub const OPERATION_BASE_URL: &str = "https://apis.roblox.com/cloud/v2/";
+/// The endpoint that reports whether a key exists and what it may do.
+pub const INTROSPECT_URL: &str = "https://apis.roblox.com/api-keys/v1/introspect";
 
 /// The keychain account the user's Open Cloud key is stored under.
 pub const API_KEY_ACCOUNT: &str = "roblox.open-cloud.api-key";
@@ -168,7 +170,7 @@ impl CreateAssetRequest {
 /// field names are the API's, so they are kept verbatim.
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct Operation {
-    /// `assets/v1/assets/<id>/versions/<n>` — the thing to poll.
+    /// `assets/v1/assets/<id>/versions/<n>` â€” the thing to poll.
     #[serde(default)]
     pub path: Option<String>,
     #[serde(default)]
@@ -223,11 +225,78 @@ pub struct UploadedAsset {
     pub operation: Operation,
 }
 
+/// What Roblox reports about a key, from the introspect endpoint.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiKeyInfo {
+    /// The name the key was created with.
+    #[serde(default)]
+    pub name: String,
+    /// The account the key acts as.
+    #[serde(default)]
+    pub authorized_user_id: Option<u64>,
+    /// Whether the key is switched on at all.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Whether its expiry date has passed.
+    #[serde(default)]
+    pub expired: bool,
+    #[serde(default)]
+    pub scopes: Vec<ApiKeyScope>,
+}
+
+/// One permission the key carries.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiKeyScope {
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub operations: Vec<String>,
+}
+
+impl ApiKeyInfo {
+    /// Whether this key may create a Model asset.
+    ///
+    /// Roblox calls the scope `asset` with the `write` operation; the assets page
+    /// shows it as `asset:write`.
+    pub fn can_write_assets(&self) -> bool {
+        self.scopes.iter().any(|scope| {
+            scope.name.starts_with("asset")
+                && scope
+                    .operations
+                    .iter()
+                    .any(|operation| operation == "write")
+        })
+    }
+
+    /// Why the key cannot upload, or `None` when it can.
+    pub fn upload_blocker(&self) -> Option<String> {
+        if !self.enabled {
+            return Some("The key is disabled. Enable it on the API Keys page.".to_string());
+        }
+        if self.expired {
+            return Some(
+                "The key has expired. Set a new expiry date or create a new key.".to_string(),
+            );
+        }
+        if !self.can_write_assets() {
+            return Some(
+                "The key is valid but has no asset:write scope. Add the Assets permission with \
+                 the write operation to it."
+                    .to_string(),
+            );
+        }
+        None
+    }
+}
+
 /// What the upload client needs to reach Roblox.
 pub struct OpenCloudClient {
     api_key: String,
     http: reqwest::Client,
     create_url: String,
+    introspect_url: String,
     operation_base: String,
     poll_attempts: u32,
     poll_interval: std::time::Duration,
@@ -235,7 +304,7 @@ pub struct OpenCloudClient {
 
 /// Debug that never prints the key.
 ///
-/// A derived `Debug` would put the API key in any `{:?}` — a log line, a panic
+/// A derived `Debug` would put the API key in any `{:?}` â€” a log line, a panic
 /// message, a test failure. The key is the one field that must stay out of every
 /// output, so this is written by hand rather than derived.
 impl std::fmt::Debug for OpenCloudClient {
@@ -270,10 +339,36 @@ impl OpenCloudClient {
             api_key,
             http,
             create_url: CREATE_ASSET_URL.to_string(),
+            introspect_url: INTROSPECT_URL.to_string(),
             operation_base: OPERATION_BASE_URL.to_string(),
             poll_attempts: DEFAULT_POLL_ATTEMPTS,
             poll_interval: DEFAULT_POLL_INTERVAL,
         })
+    }
+
+    /// Ask Roblox whether this key exists, and what it is allowed to do.
+    ///
+    /// The only authority on a key's validity. Roblox answers with the scopes the
+    /// key actually has, so a key that was pasted from the wrong page - a session
+    /// token rather than an API key - comes back as "API Key does not exist"
+    /// instead of a bare 401 the user cannot act on.
+    pub async fn introspect(&self) -> Result<ApiKeyInfo, String> {
+        let response = self
+            .http
+            .post(&self.introspect_url)
+            .json(&serde_json::json!({ "apiKey": self.api_key }))
+            .send()
+            .await
+            .map_err(|error| format!("could not reach Roblox to check the key: {error}"))?;
+
+        let status = response.status().as_u16();
+        let body = response.text().await.unwrap_or_default();
+        if !(200..300).contains(&status) {
+            let detail = describe_refusal(status, &body, &self.api_key);
+            return Err(detail);
+        }
+        serde_json::from_str::<ApiKeyInfo>(&body)
+            .map_err(|_| "Roblox answered but the key details were unreadable".to_string())
     }
 
     /// Point the client at another host, and shorten its polling. Tests only.
@@ -295,10 +390,16 @@ impl OpenCloudClient {
         self
     }
 
+    /// Point introspect at another host. Tests only.
+    pub fn with_introspect_url(mut self, url: impl Into<String>) -> Self {
+        self.introspect_url = url.into();
+        self
+    }
+
     /// Upload `bytes` as a Model asset and wait for Roblox to finish processing.
     ///
     /// The multipart body is built once and sent as raw bytes, so the exact
-    /// payload is what `encode_multipart` produced — no second serialiser sits
+    /// payload is what `encode_multipart` produced â€” no second serialiser sits
     /// between the encoder and the wire.
     pub async fn upload_model(
         &self,
@@ -440,8 +541,8 @@ fn describe_refusal(status: u16, body: &str, api_key: &str) -> String {
 
 /// Redact the API key's own value from a message.
 ///
-/// The wording around a credential is the useful part — `Invalid API key` is
-/// exactly what a user needs to read — so only the secret itself is replaced. A
+/// The wording around a credential is the useful part â€” `Invalid API key` is
+/// exactly what a user needs to read â€” so only the secret itself is replaced. A
 /// proxy or a debug body can echo the `x-api-key` header back, and that value
 /// must never reach a log or a chat transcript.
 fn scrub(text: &str, api_key: &str) -> String {
