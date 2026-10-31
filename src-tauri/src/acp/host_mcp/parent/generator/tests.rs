@@ -624,7 +624,44 @@ fn a_page_write_with_a_broken_atlas_is_refused() {
     assert!(error.contains("base64"), "{error}");
     assert!(!project.join(".termul").exists());
 }
-/// A revision lands in the record it revises, even when the model renames it.
+
+/// A model reports its bytes as `model`, not `atlas`.
+///
+/// The page's save read only `atlas`, so every 3D generation from the composer
+/// finished and was then refused with "the result carries no atlas". Nothing was
+/// written, and the page kept showing the record it already had - which read as
+/// "generate is broken" and looked like it had reverted to an older model.
+fn model_result(name: &str, glb: &[u8]) -> Value {
+    use base64::Engine as _;
+    let encoded = base64::engine::general_purpose::STANDARD.encode(glb);
+    serde_json::json!({
+        "kind": "character",
+        "name": name,
+        "prompt": "a brown puppy",
+        "spec": { "version": 1, "name": "Puppy", "category": "character", "parts": [] },
+        "model": format!("data:model/gltf-binary;base64,{encoded}"),
+        "report": { "ok": true },
+    })
+}
+
+#[test]
+fn a_page_can_write_a_model_from_its_model_field() {
+    let root = std::env::temp_dir().join(format!("termul-page-3d-{}", uuid::Uuid::new_v4()));
+    let project = root.join("project");
+    std::fs::create_dir_all(&project).unwrap();
+
+    let saved = save_artifact_result(&project, &model_result("Brown Puppy", b"glTF")).unwrap();
+    assert_eq!(saved.slug, "brown-puppy");
+    assert_eq!(saved.version, 1);
+    assert!(saved.path.ends_with("v1.glb"), "{}", saved.path);
+
+    let item =
+        std::fs::read_to_string(project.join(".termul/generated/character/brown-puppy/item.json"))
+            .expect("item.json written");
+    assert!(item.contains("\"model\":\"v1.glb\""), "{item}");
+    // The spec is what the viewport draws from, so it has to survive the write.
+    assert!(item.contains("\"category\":\"character\""), "{item}");
+}/// A revision lands in the record it revises, even when the model renames it.
 ///
 /// This is the bug a user hit: they asked for pants on top of a shirt, the model
 /// returned a new name, and the save created a second record - the first one's

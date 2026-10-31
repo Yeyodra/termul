@@ -1,4 +1,4 @@
-/**
+﻿/**
  * The garment the Roblox page shows in 3D, and the facts about it.
  *
  * The collection list lives in the Side panel, so this reads the pick from the
@@ -31,7 +31,13 @@ import {
   useRecordAtlas,
   useRobloxRecordsStore
 } from '@/stores/roblox-records-store'
-import { pickSlug, useIsDraft, usePickedSlug, useWornKeys } from '@/stores/roblox-selection-store'
+import {
+  isPicked,
+  pickSlug,
+  useIsDraft,
+  usePickedSlug,
+  useWornKeys
+} from '@/stores/roblox-selection-store'
 import { progressLine, type StageSnapshot, useStage } from '@/stores/roblox-stage-store'
 import { ClothingComposer } from './ClothingComposer'
 import { NodePipeline } from './NodePipeline'
@@ -189,7 +195,7 @@ export function ClothingViewport({ projectPath }: ClothingViewportProps): React.
     const garments = (records ?? []).filter((record) => !isModelRecord(record))
     if (garments.length === 0) return null
     if (!picked) return garments[0] ?? null
-    return garments.find((record) => record.slug === picked) ?? null
+    return garments.find((record) => isPicked(picked, record)) ?? null
   }, [draft, records, picked])
 
   const atlas = useRecordAtlas(projectPath, active)

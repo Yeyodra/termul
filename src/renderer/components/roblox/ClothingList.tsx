@@ -27,6 +27,7 @@ import {
   useRobloxRecordsStore
 } from '@/stores/roblox-records-store'
 import {
+  isPicked,
   pickSlug,
   startDraft,
   toggleWorn,
@@ -139,9 +140,6 @@ export function ClothingList({
     load(projectPath)
   }, [load, projectPath])
 
-  const selected =
-    picked && records?.some((record) => record.slug === picked) ? picked : records?.[0]?.slug
-
   /**
    * Only the records this generator produced.
    *
@@ -233,13 +231,21 @@ export function ClothingList({
             <ul aria-label="Collection" className="flex flex-col gap-0.5 px-2">
               {shown.map((record) => (
                 <ClothingRow
-                  key={record.slug}
+                  key={`${record.kind}:${record.slug}`}
                   projectPath={projectPath}
                   record={record}
-                  active={record.slug === selected}
+                  active={
+                    picked && mine.some((one) => isPicked(picked, one))
+                      ? isPicked(picked, record)
+                      : // Either nothing was picked, or the pick names a record that
+                        // is gone: the page falls back to the newest of this
+                        // generator, so the row that is open has to say so instead
+                        // of leaving every row unmarked.
+                        record === mine[0]
+                  }
                   worn={worn.includes(`${record.kind}:${record.slug}`)}
                   onPick={(slug) => {
-                    pickSlug(projectPath, slug)
+                    pickSlug(projectPath, slug, record.kind)
                     // RobloxKit's row opens the item in the page, so the click
                     // lands somewhere. Without this the pick only changed a
                     // highlight in a panel the user was already looking at.

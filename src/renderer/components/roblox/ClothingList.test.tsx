@@ -112,7 +112,7 @@ describe('ClothingList', () => {
     renderList()
 
     fireEvent.click(await screen.findByText('desert-camo'))
-    expect(useRobloxSelectionStore.getState().pickedByProject['/p']).toBe('desert-camo')
+    expect(useRobloxSelectionStore.getState().pickedByProject['/p']).toBe('shirt:desert-camo')
   })
 
   it('opens the feature page when a row is picked, as RobloxKit does', async () => {
@@ -140,7 +140,7 @@ describe('ClothingList', () => {
   })
 
   it('falls back to the newest record when the pick names one that is gone', async () => {
-    useRobloxSelectionStore.setState({ pickedByProject: { '/p': 'deleted-slug' } })
+    useRobloxSelectionStore.setState({ pickedByProject: { '/p': 'shirt:deleted-slug' } })
     mocks.loadArtifactRecords.mockResolvedValue([record('royal-robe')])
     renderList()
 

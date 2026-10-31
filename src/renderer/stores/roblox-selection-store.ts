@@ -86,11 +86,28 @@ export const useRobloxSelectionStore = create<RobloxSelectionState>((set) => ({
   }
 }))
 
-/** The picked slug for a project, or `undefined` while nothing was picked. */
+/**
+ * The picked record's key for a project, or `undefined` while nothing was picked.
+ *
+ * The key is `kind:slug`, not the slug alone. A slug is only unique within a
+ * kind: generating a character from a building named the record the same way, so
+ * two records really did exist as `building/brick-cottage` and
+ * `character/brick-cottage`. Keyed by slug, picking either one selected both, and
+ * the page then showed whichever it found first - so the older record could not
+ * be opened at all.
+ */
 export function usePickedSlug(projectPath: string | undefined): string | undefined {
   return useRobloxSelectionStore((state) =>
     projectPath ? state.pickedByProject[projectPath] : undefined
   )
+}
+
+/** Whether a record is the picked one. */
+export function isPicked(
+  picked: string | undefined,
+  record: { kind: string; slug: string }
+): boolean {
+  return picked === `${record.kind}:${record.slug}`
 }
 
 /** Whether the page should show a blank garment. */
@@ -100,9 +117,14 @@ export function useIsDraft(projectPath: string | undefined): boolean {
   )
 }
 
-/** The garment made from a blank page, worn on its own; undefined otherwise. */
-export function pickSlug(projectPath: string, slug: string): void {
-  useRobloxSelectionStore.getState().pick(projectPath, slug)
+/**
+ * Pick a record, by its kind and slug.
+ *
+ * `kind` is required because a slug alone is ambiguous: the same one can exist
+ * under two kinds, and a pick that cannot tell them apart selects both.
+ */
+export function pickSlug(projectPath: string, slug: string, kind?: string): void {
+  useRobloxSelectionStore.getState().pick(projectPath, kind ? `${kind}:${slug}` : slug)
 }
 
 export function startDraft(projectPath: string): void {

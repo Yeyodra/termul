@@ -64,6 +64,7 @@ describe('the 3D composer', () => {
       status: 'done',
       saved: {
         slug: 'treasure-chest',
+        kind: 'prop',
         version: 3,
         path: '/p/.termul/generated/prop/treasure-chest/v3.glb',
         relative: 'prop/treasure-chest/v3.glb',
@@ -116,6 +117,30 @@ describe('the 3D composer', () => {
     expect(run.prompt).toContain('thicker lid')
   })
 
+  it('keeps the record category when the picker says otherwise', async () => {
+    renderComposer(record())
+    fireEvent.click(screen.getByRole('button', { name: 'Character' }))
+    typePrompt('turn it into a character')
+    press()
+
+    const run = await lastRun()
+    // The host files a record by its kind, so a revision that took the picker's
+    // category wrote a second record under a different folder instead of a new
+    // version, and the original history stopped at the previous version.
+    expect(run.recordSlug).toBe('treasure-chest')
+    expect(run.category).toBe('prop')
+  })
+
+  it('lets the picker choose the category for a new model', async () => {
+    renderComposer()
+    fireEvent.click(screen.getByRole('button', { name: 'Character' }))
+    typePrompt('a knight')
+    press()
+
+    const run = await lastRun()
+    expect(run.category).toBe('character')
+  })
+
   it('names the model on screen in the placeholder, so Revise is unambiguous', () => {
     renderComposer(record())
     expect(screen.getByLabelText('Describe a model')).toHaveAttribute(
@@ -165,7 +190,7 @@ describe('the 3D composer', () => {
     typePrompt('a crate')
     press()
 
-    await waitFor(() => expect(onSettled).toHaveBeenCalledWith('treasure-chest'))
+    await waitFor(() => expect(onSettled).toHaveBeenCalledWith('treasure-chest', 'prop'))
     expect(screen.getByLabelText('Describe a model')).toHaveValue('')
   })
 

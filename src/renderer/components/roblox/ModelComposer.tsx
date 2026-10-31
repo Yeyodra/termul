@@ -1,4 +1,4 @@
-/**
+﻿/**
  * The 3D page's composer: describe a model and get it, without leaving the page.
  *
  * This is the counterpart of `ClothingComposer`, and the reason it exists is that
@@ -36,7 +36,7 @@ interface ModelComposerProps {
   /** The model on screen, so `Revise` has something to revise. */
   record: ArtifactRecord | null
   /** Called with the slug the host wrote, after the collection is re-read. */
-  onSettled?: (slug: string) => void
+  onSettled?: (slug: string, kind: string) => void
   onStage?: (stage: string) => void
 }
 
@@ -86,7 +86,14 @@ export function ModelComposer({
         prompt: revising
           ? modelRevisionPrompt(revising.slug, currentVersion(revising).n, prompt)
           : prompt.trim(),
-        category,
+        // A revision keeps the record's own category. The picker decides what a
+        // NEW model is, but letting it decide a revision's category splits the
+        // record: the host files by kind, so revising a building as a character
+        // wrote a second `brick-cottage` under `character/` with its own v1, and
+        // the building's history stopped at the version before the change.
+        category: revising
+          ? ((currentVersion(revising).kind ?? revising.kind) as ModelCategory)
+          : category,
         recordSlug: revising?.slug,
         base: revising ? currentVersion(revising).design : undefined,
         onStage: (stage) => {
@@ -104,7 +111,7 @@ export function ModelComposer({
         })
         // Outside the mount guard: the pick belongs to the project, so a model
         // that landed while the page was closed still opens on return.
-        onSettled?.(outcome.saved.slug)
+        onSettled?.(outcome.saved.slug, outcome.saved.kind)
         if (mounted.current) setText('')
       } else if (outcome.status === 'failed') {
         useStageStore.getState().set(projectPath, {
@@ -138,8 +145,8 @@ export function ModelComposer({
           }}
           placeholder={
             revising
-              ? `Change ${currentVersion(revising).prompt?.trim() || revising.slug} (e.g. "thicker legs")…`
-              : `Describe a ${CATEGORY_NOUN[category]}…`
+              ? `Change ${currentVersion(revising).prompt?.trim() || revising.slug} (e.g. "thicker legs")â€¦`
+              : `Describe a ${CATEGORY_NOUN[category]}â€¦`
           }
           aria-label="Describe a model"
           className="h-8 min-w-0 flex-1 rounded-md border border-border/60 bg-card px-2 text-xs text-foreground transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-hidden"
@@ -175,7 +182,7 @@ export function ModelComposer({
           className="flex h-8 shrink-0 items-center gap-1 rounded-md bg-primary px-2 text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-40"
         >
           {busy ? <Sparkles size={12} aria-hidden="true" /> : <Zap size={12} aria-hidden="true" />}
-          {busy ? 'Designing…' : revising ? 'Apply' : 'Make it'}
+          {busy ? 'Designingâ€¦' : revising ? 'Apply' : 'Make it'}
         </button>
       </div>
       {error && <p className="pt-1 text-3xs leading-relaxed text-destructive">{error}</p>}

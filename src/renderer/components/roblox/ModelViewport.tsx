@@ -19,7 +19,7 @@ import { type ArtifactRecord, currentVersion, restoreVersion } from '@/lib/artif
 import { ArtifactViewportPanel } from '@/lib/generator/viewport/ArtifactViewportPanel'
 import type { SpecModelArtifact } from '@/lib/generator/viewport/artifact'
 import { useProjectRecords, useRobloxRecordsStore } from '@/stores/roblox-records-store'
-import { pickSlug, usePickedSlug } from '@/stores/roblox-selection-store'
+import { isPicked, pickSlug, useIsDraft, usePickedSlug } from '@/stores/roblox-selection-store'
 import { ModelComposer } from './ModelComposer'
 import { MODEL_TABS, RobloxInspector } from './RobloxInspector'
 
@@ -30,6 +30,7 @@ interface ModelViewportProps {
 export function ModelViewport({ projectPath }: ModelViewportProps): React.JSX.Element {
   const records = useProjectRecords(projectPath)
   const picked = usePickedSlug(projectPath)
+  const draft = useIsDraft(projectPath)
   const load = useRobloxRecordsStore((state) => state.load)
   const refresh = useRobloxRecordsStore((state) => state.refresh)
   // The upload needs the open place's handle, and the same poll that feeds the
@@ -47,14 +48,19 @@ export function ModelViewport({ projectPath }: ModelViewportProps): React.JSX.El
    * clothing record out of a 3D page: the two engines file under different
    * sub-folders, but the reliable discriminator is whether the version wrote a
    * model file at all.
+   *
+   * A draft means the page shows nothing. Without this the pick was the only
+   * thing New cleared, so the viewport fell straight back to the newest record
+   * and the button looked broken.
    */
   const active = useMemo<ArtifactRecord | null>(() => {
+    if (draft) return null
     if (!records || records.length === 0) return null
     const withModel = records.filter((record) => Boolean(currentVersion(record).model))
     if (!withModel.length) return null
     if (!picked) return withModel[0] ?? null
-    return withModel.find((record) => record.slug === picked) ?? null
-  }, [records, picked])
+    return withModel.find((record) => isPicked(picked, record)) ?? null
+  }, [draft, records, picked])
 
   const version = active ? currentVersion(active) : null
 
@@ -80,11 +86,24 @@ export function ModelViewport({ projectPath }: ModelViewportProps): React.JSX.El
     refresh(projectPath)
   }
 
-  const placeholder = active
-    ? `Reading v${version?.n ?? 1}.`
-    : records?.length
-      ? 'Describe a model below and it lands here.'
-      : 'Describe a model below, or ask the agent for one.'
+  /**
+   * A record picked but not drawable says why, instead of "Reading v1" forever.
+   *
+   * The viewport draws from the stored spec, so a version saved before the spec
+   * was kept has nothing to build. That state used to read as a model that was
+   * still loading, which never finished.
+   */
+  const missingSpec = Boolean(active) && !version?.design
+
+  const placeholder = missingSpec
+    ? 'This version was saved before its spec was kept, so it cannot be drawn. Generate it again to get a model that can.'
+    : active
+      ? `Reading v${version?.n ?? 1}.`
+      : draft
+        ? 'Describe a model below and press Make it.'
+        : records?.length
+          ? 'Describe a model below and it lands here.'
+          : 'Describe a model below, or ask the agent for one.'
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-1 overflow-hidden">
@@ -125,11 +144,11 @@ export function ModelViewport({ projectPath }: ModelViewportProps): React.JSX.El
         <ModelComposer
           projectPath={projectPath}
           record={active}
-          onSettled={(slug) => {
+          onSettled={(slug, kind) => {
             // Read the project first, then pick: the pick names a record that
             // only exists after the re-read, and picking first left the page on
             // whatever record happened to be newest.
-            refresh(projectPath).then(() => pickSlug(projectPath, slug))
+            refresh(projectPath).then(() => pickSlug(projectPath, slug, kind))
           }}
         />
       </div>

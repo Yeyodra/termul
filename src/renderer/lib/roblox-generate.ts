@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Starting a generation from a feature page.
  *
  * RobloxKit's panel calls its own engine and writes the item itself, which is why
@@ -44,6 +44,14 @@ export interface StartOptions {
 
 export interface SavedArtifact {
   slug: string
+  /**
+   * The folder the record was filed under.
+   *
+   * A slug is only unique within a kind, so a caller selecting the record it just
+   * wrote needs both: the same slug can exist under two kinds, and a pick that
+   * names only the slug selects whichever one is found first.
+   */
+  kind: string
   version: number
   path: string
   relative: string

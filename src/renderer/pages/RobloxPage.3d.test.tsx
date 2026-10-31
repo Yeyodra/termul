@@ -11,6 +11,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { featureReady, ROBLOX_FEATURES } from '@/lib/roblox-features'
 import { useRobloxRecordsStore } from '@/stores/roblox-records-store'
+import { useRobloxSelectionStore } from '@/stores/roblox-selection-store'
 import RobloxPage from './RobloxPage'
 
 const { mocks } = vi.hoisted(() => ({
@@ -105,6 +106,7 @@ describe('the 3D page route', () => {
       models: {},
       reading: {}
     })
+    useRobloxSelectionStore.setState({ pickedByProject: {}, draftByProject: {} })
   })
 
   it('no longer claims the engine is missing', async () => {
@@ -193,5 +195,46 @@ describe('the 3D page route', () => {
     mocks.loadArtifactRecords.mockResolvedValue([])
     renderPage('/roblox/clothing')
     expect((await screen.findAllByText(/Pick a garment/)).length).toBeGreaterThan(0)
+  })
+
+  it('shows nothing after New, even though a model exists', async () => {
+    mocks.loadArtifactRecords.mockResolvedValue([
+      {
+        slug: 'a-brown-puppy',
+        kind: 'character',
+        current: 1,
+        createdAt: 1,
+        updatedAt: 2,
+        dir: 'C:/repo/.termul/generated/character/a-brown-puppy',
+        itemPath: 'C:/repo/.termul/generated/character/a-brown-puppy/item.json',
+        versions: [
+          {
+            n: 1,
+            at: 1,
+            prompt: 'a brown puppy',
+            ok: true,
+            kind: 'character',
+            atlas: 'v1.glb',
+            model: 'v1.glb',
+            design: {
+              version: 1,
+              name: 'Puppy',
+              category: 'character',
+              palette: { fur: '#c98a4b' },
+              parts: [{ type: 'box', size: [2, 2, 2], color: 'fur' }]
+            }
+          }
+        ]
+      }
+    ])
+    // New clears the pick; without a draft check the viewport fell back to the
+    // newest record and the button looked like it did nothing.
+    useRobloxSelectionStore.setState({ draftByProject: { 'C:/repo': true } })
+
+    renderPage('/roblox/3d')
+
+    const viewport = await screen.findByTestId('viewport')
+    expect(viewport).not.toHaveAttribute('data-format', 'model')
+    expect(await screen.findByText(/press Make it/)).toBeInTheDocument()
   })
 })

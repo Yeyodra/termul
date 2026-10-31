@@ -352,6 +352,12 @@ fn artifact_extension(fields: &serde_json::Map<String, Value>) -> &'static str {
 #[serde(rename_all = "camelCase")]
 pub struct SavedArtifact {
     pub slug: String,
+    /// The folder the record was filed under.
+    ///
+    /// A slug is only unique within a kind, so a caller that wants to select the
+    /// record it just wrote needs both: the same slug can exist under two kinds,
+    /// and a pick that names only the slug selects whichever one is found first.
+    pub kind: String,
     pub version: u64,
     pub path: String,
     pub relative: String,
@@ -377,11 +383,16 @@ pub fn save_artifact_result(
         .as_object()
         .ok_or_else(|| "the result is not an object".to_string())?;
 
-    let atlas = fields
+    // A garment reports its sheet as `atlas`; a 3D engine reports the GLB as
+    // `model`. Reading only `atlas` rejected every model with "the result
+    // carries no atlas", so a generation finished and was never written - the
+    // page kept showing whatever record it already had.
+    let artifact = fields
         .get("atlas")
+        .or_else(|| fields.get("model"))
         .and_then(Value::as_str)
         .ok_or_else(|| "the result carries no atlas".to_string())?;
-    let bytes = decode_data_url(atlas)?;
+    let bytes = decode_data_url(artifact)?;
 
     let still = fields
         .get("image")
@@ -394,6 +405,11 @@ pub fn save_artifact_result(
     let saved = write_record(root, &record_dir, &bytes, still.as_deref(), version, extension)?;
     Ok(SavedArtifact {
         slug: saved.slug,
+        kind: record_dir
+            .split('/')
+            .nth(2)
+            .unwrap_or("artifact")
+            .to_string(),
         version: saved.version,
         path: saved.atlas_absolute,
         relative: saved.atlas_relative,

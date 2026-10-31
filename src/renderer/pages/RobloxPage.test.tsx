@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+﻿import { render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useRobloxRecordsStore } from '@/stores/roblox-records-store'
@@ -113,7 +113,7 @@ describe('RobloxPage', () => {
       }
     ])
     mocks.readAtlasDataUrl.mockResolvedValue('data:image/png;base64,AAAA')
-    useRobloxSelectionStore.setState({ pickedByProject: { 'C:/repo': 'royal-robe' } })
+    useRobloxSelectionStore.setState({ pickedByProject: { 'C:/repo': 'shirt:royal-robe' } })
 
     renderPage()
     expect(await screen.findByText('scene')).toBeInTheDocument()

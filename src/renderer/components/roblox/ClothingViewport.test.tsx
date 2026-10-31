@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+﻿import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useRobloxRecordsStore } from '@/stores/roblox-records-store'
@@ -106,7 +106,7 @@ describe('ClothingViewport', () => {
 
     expect(await screen.findByText(/\.termul\\generated\\shirt\\royal-robe/)).toBeInTheDocument()
 
-    useRobloxSelectionStore.setState({ pickedByProject: { '/p': 'desert-camo' } })
+    useRobloxSelectionStore.setState({ pickedByProject: { '/p': 'shirt:desert-camo' } })
     expect(await screen.findByText(/\.termul\\generated\\shirt\\desert-camo/)).toBeInTheDocument()
   })
 
@@ -164,9 +164,13 @@ describe('ClothingViewport', () => {
   it('shows a picked pair of pants alone too', async () => {
     mocks.loadArtifactRecords.mockResolvedValue([
       record('royal-robe'),
-      record('blue-jeans', { versions: [{ n: 1, at: 1, ok: true, design: { type: 'pants' } }] })
+      record('blue-jeans', {
+        kind: 'pants',
+        dir: '/p/.termul/generated/pants/blue-jeans',
+        versions: [{ n: 1, at: 1, ok: true, design: { type: 'pants' }, atlas: 'v1.png' }]
+      })
     ])
-    useRobloxSelectionStore.setState({ pickedByProject: { '/p': 'blue-jeans' } })
+    useRobloxSelectionStore.setState({ pickedByProject: { '/p': 'pants:blue-jeans' } })
     renderViewport()
 
     const outfit = await lastOutfit()
@@ -189,7 +193,7 @@ describe('ClothingViewport', () => {
       record('some-other-shirt'),
       record('blue-jeans', { versions: [{ n: 1, at: 1, ok: true, design: { type: 'pants' } }] })
     ])
-    useRobloxSelectionStore.setState({ pickedByProject: { '/p': 'not-read-yet' } })
+    useRobloxSelectionStore.setState({ pickedByProject: { '/p': 'shirt:not-read-yet' } })
     renderViewport()
 
     // The viewport and the Inspector both say it, so presence is what this
