@@ -1,4 +1,4 @@
-/**
+﻿/**
  * The stage the page is in, and the line the viewport shows while it draws.
  *
  * RobloxKit has a 4-state machine (`stageStatus-DQVaoIXS.js`) driving ten panels,
@@ -33,6 +33,15 @@ export interface StageSnapshot {
   total: number
   /** What the engine last reported, e.g. Design, Render, Checks. */
   stage: string
+  /**
+   * The engine's own line about what it is doing right now.
+   *
+   * A bare stage name is not enough to sit through a two-minute generation: the
+   * engine knows more than "designing" - it knows which model call is running,
+   * that a rebuild is happening, or that a dropped connection is being retried -
+   * and RobloxKit surfaces exactly that (`gen3d-BAdfthxw.js:862`).
+   */
+  detail: string | null
   /** The sheet as it is being drawn, so the page can show it growing. */
   sheet: string | null
   /** The atlas the avatar showed when a revision started, for the unfold. */
@@ -46,6 +55,7 @@ const IDLE: StageSnapshot = {
   layer: 0,
   total: 0,
   stage: '',
+  detail: null,
   sheet: null,
   base: null,
   error: null
@@ -77,8 +87,11 @@ export function useStage(projectPath: string | undefined): StageSnapshot {
 /** The line under the viewport while a generation runs. */
 export function progressLine(snapshot: StageSnapshot): string | null {
   if (snapshot.state !== 'running') return null
-  if (snapshot.phase === 'unwrap') return 'Unfolding to the sheet…'
-  if (snapshot.phase === 'wrap') return 'Folding back into 3D…'
+  if (snapshot.phase === 'unwrap') return 'Unfolding to the sheet.'
+  if (snapshot.phase === 'wrap') return 'Folding back into 3D.'
   if (snapshot.total > 0) return `Drawing layer ${snapshot.layer} of ${snapshot.total}`
-  return snapshot.stage ? `${snapshot.stage}…` : 'Starting…'
+  // The engine's own line beats a bare stage name: it says what is happening
+  // inside the stage, which is the difference between a spinner and progress.
+  if (snapshot.detail) return snapshot.detail
+  return snapshot.stage ? `${snapshot.stage}.` : 'Starting.'
 }

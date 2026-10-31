@@ -141,6 +141,37 @@ describe('the 3D composer', () => {
     expect(run.category).toBe('character')
   })
 
+  it('rigs a creature even when the picker says prop, and says so', async () => {
+    renderComposer()
+    typePrompt('a brown puppy')
+    press()
+
+    const run = await lastRun()
+    // A dog built as a prop has no skeleton and no leg proportions, so it comes
+    // out as boxes. The prompt is a better signal than the picker here.
+    expect(run.category).toBe('character')
+    expect(await screen.findByText(/rigged character/)).toBeInTheDocument()
+  })
+
+  it('keeps a statue of a creature a prop', async () => {
+    renderComposer()
+    typePrompt('a dragon statue')
+    press()
+
+    const run = await lastRun()
+    expect(run.category).toBe('prop')
+  })
+
+  it('leaves an ordinary prop on the picked category, without a notice', async () => {
+    renderComposer()
+    typePrompt('a wooden crate')
+    press()
+
+    const run = await lastRun()
+    expect(run.category).toBe('prop')
+    expect(screen.queryByText(/rigged character/)).toBeNull()
+  })
+
   it('names the model on screen in the placeholder, so Revise is unambiguous', () => {
     renderComposer(record())
     expect(screen.getByLabelText('Describe a model')).toHaveAttribute(

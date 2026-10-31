@@ -20,6 +20,7 @@ import { ArtifactViewportPanel } from '@/lib/generator/viewport/ArtifactViewport
 import type { SpecModelArtifact } from '@/lib/generator/viewport/artifact'
 import { useProjectRecords, useRobloxRecordsStore } from '@/stores/roblox-records-store'
 import { isPicked, pickSlug, useIsDraft, usePickedSlug } from '@/stores/roblox-selection-store'
+import { progressLine, useStage } from '@/stores/roblox-stage-store'
 import { ModelComposer } from './ModelComposer'
 import { MODEL_TABS, RobloxInspector } from './RobloxInspector'
 
@@ -31,6 +32,7 @@ export function ModelViewport({ projectPath }: ModelViewportProps): React.JSX.El
   const records = useProjectRecords(projectPath)
   const picked = usePickedSlug(projectPath)
   const draft = useIsDraft(projectPath)
+  const stage = useStage(projectPath)
   const load = useRobloxRecordsStore((state) => state.load)
   const refresh = useRobloxRecordsStore((state) => state.refresh)
   // The upload needs the open place's handle, and the same poll that feeds the
@@ -95,15 +97,27 @@ export function ModelViewport({ projectPath }: ModelViewportProps): React.JSX.El
    */
   const missingSpec = Boolean(active) && !version?.design
 
-  const placeholder = missingSpec
-    ? 'This version was saved before its spec was kept, so it cannot be drawn. Generate it again to get a model that can.'
-    : active
-      ? `Reading v${version?.n ?? 1}.`
-      : draft
-        ? 'Describe a model below and press Make it.'
-        : records?.length
-          ? 'Describe a model below and it lands here.'
-          : 'Describe a model below, or ask the agent for one.'
+  /**
+   * What the engine is doing right now, or null when nothing is running.
+   *
+   * A generation takes a minute or two, and the page used to show only a spinner:
+   * no stage, no detail, nothing to tell a stuck run from a slow one. The engine
+   * already reports both (`designing`, `building`, `checking`, `fixing`, plus its
+   * own line), so the viewport shows them instead of an empty grid.
+   */
+  const progress = progressLine(stage)
+
+  const placeholder = progress
+    ? progress
+    : missingSpec
+      ? 'This version was saved before its spec was kept, so it cannot be drawn. Generate it again to get a model that can.'
+      : active
+        ? `Reading v${version?.n ?? 1}.`
+        : draft
+          ? 'Describe a model below and press Make it.'
+          : records?.length
+            ? 'Describe a model below and it lands here.'
+            : 'Describe a model below, or ask the agent for one.'
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-1 overflow-hidden">

@@ -15,6 +15,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Sparkles, Zap } from '@/components/icons'
 import type { ArtifactRecord } from '@/lib/artifact-records'
 import { currentVersion } from '@/lib/artifact-records'
+import { autoRigNote, inferCategory } from '@/lib/generator/engines/3d/infer'
 import {
   MODEL_CATEGORIES,
   type ModelCategory,
@@ -50,6 +51,7 @@ export function ModelComposer({
   const [category, setCategory] = useState<ModelCategory>('prop')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const mounted = useRef(true)
 
   useEffect(() => {
@@ -69,6 +71,7 @@ export function ModelComposer({
     if (!prompt.trim() || busy) return
     setBusy(true)
     setError(null)
+    setNotice(null)
     useStageStore.getState().set(projectPath, {
       state: 'running',
       phase: 'draw',
@@ -81,23 +84,28 @@ export function ModelComposer({
     })
     onStage?.('running')
     try {
+      // A new model's category follows the prompt when the prompt names a
+      // creature: "a dog" built as a prop has no skeleton and no leg
+      // proportions, so it comes out as boxes. A revision keeps its record's
+      // category, because the host files by kind and switching it would split
+      // one record's history across two folders.
+      const inferred = revising ? null : inferCategory(prompt)
+      const effective = (inferred?.category ?? category) as ModelCategory
+      const note = autoRigNote(category, inferred)
+      if (note && mounted.current) setNotice(note)
+
       const outcome = await runModelGeneration({
         projectPath,
         prompt: revising
           ? modelRevisionPrompt(revising.slug, currentVersion(revising).n, prompt)
           : prompt.trim(),
-        // A revision keeps the record's own category. The picker decides what a
-        // NEW model is, but letting it decide a revision's category splits the
-        // record: the host files by kind, so revising a building as a character
-        // wrote a second `brick-cottage` under `character/` with its own v1, and
-        // the building's history stopped at the version before the change.
         category: revising
           ? ((currentVersion(revising).kind ?? revising.kind) as ModelCategory)
-          : category,
+          : effective,
         recordSlug: revising?.slug,
         base: revising ? currentVersion(revising).design : undefined,
-        onStage: (stage) => {
-          useStageStore.getState().set(projectPath, { stage })
+        onStage: (stage, detail) => {
+          useStageStore.getState().set(projectPath, { stage, detail })
           if (mounted.current) onStage?.(stage)
         }
       })
@@ -185,6 +193,7 @@ export function ModelComposer({
           {busy ? 'Designingâ€¦' : revising ? 'Apply' : 'Make it'}
         </button>
       </div>
+      {notice && <p className="pt-1 text-3xs leading-relaxed text-muted-foreground">{notice}</p>}
       {error && <p className="pt-1 text-3xs leading-relaxed text-destructive">{error}</p>}
     </div>
   )
