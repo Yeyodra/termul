@@ -1,5 +1,5 @@
 import type { IpcResult } from '@shared/types/ipc.types'
-import { invokeIpcWrapped } from '@/lib/ipc/tauri'
+import { invokeIpc, invokeIpcWrapped } from '@/lib/ipc/tauri'
 import { isTauriContext } from '@/lib/tauri-runtime'
 
 export interface RobloxStudioStatus {
@@ -133,7 +133,7 @@ export function createRobloxApi(): {
       if (!isTauriContext()) {
         return { success: true, data: OFF_DESKTOP }
       }
-      return invokeIpcWrapped<OpenCloudStatus>('roblox_opencloud_status')
+      return invokeIpc<OpenCloudStatus>('roblox_opencloud_status')
     },
     saveOpenCloudKey: async (key: string, userId?: string) => {
       if (!isTauriContext()) {
@@ -143,13 +143,13 @@ export function createRobloxApi(): {
           code: 'DESKTOP_ONLY'
         }
       }
-      return invokeIpcWrapped<OpenCloudStatus>('roblox_opencloud_save_key', { key, userId })
+      return invokeIpc<OpenCloudStatus>('roblox_opencloud_save_key', { key, userId })
     },
     clearOpenCloudKey: async () => {
       if (!isTauriContext()) {
         return { success: true, data: OFF_DESKTOP }
       }
-      return invokeIpcWrapped<OpenCloudStatus>('roblox_opencloud_clear_key')
+      return invokeIpc<OpenCloudStatus>('roblox_opencloud_clear_key')
     },
     uploadModel: async (request) => {
       if (!isTauriContext()) {
@@ -161,7 +161,7 @@ export function createRobloxApi(): {
       }
       // The creator is not passed: the host reads it from the keychain beside the
       // key, so the two cannot disagree about whose account an asset belongs to.
-      return invokeIpcWrapped<OpenCloudUpload>('roblox_upload_model', {
+      return invokeIpc<OpenCloudUpload>('roblox_upload_model', {
         glbBase64: request.glbBase64,
         name: request.name,
         description: request.description,

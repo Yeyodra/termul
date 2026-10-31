@@ -71,12 +71,34 @@ fn looks_like_user_id(value: &str) -> bool {
 
 #[tauri::command]
 pub fn roblox_opencloud_status() -> IpcResult<OpenCloudStatus> {
-    match credentials::read_secret(API_KEY_ACCOUNT, "the stored Open Cloud key is empty") {
-        Ok(Some(_)) => IpcResult::success(OpenCloudStatus {
-            configured: true,
-            reason: None,
-            user_id: stored_user_id(),
-        }),
+    // Which branch answered, and never the key itself. Without this the renderer
+    // reports "no key saved" and there is no way to tell an empty keychain from a
+    // keychain the process cannot read.
+    let read = credentials::read_secret(API_KEY_ACCOUNT, "the stored Open Cloud key is empty");
+    log::info!(
+        "[roblox] opencloud status: read={}",
+        match &read {
+            Ok(Some(_)) => "some".to_string(),
+            Ok(None) => "none".to_string(),
+            Err(reason) => format!("err:{reason}"),
+        }
+    );
+    match read {
+        Ok(Some(_)) => {
+            let reply = IpcResult::success(OpenCloudStatus {
+                configured: true,
+                reason: None,
+                user_id: stored_user_id(),
+            });
+            // The renderer said "no key saved" while this branch answered, so log
+            // the exact payload it receives. Guessing at the layer between the two
+            // has already cost more than reading it.
+            log::info!(
+                "[roblox] opencloud status reply: {:?}",
+                serde_json::to_string(&reply).unwrap_or_default()
+            );
+            reply
+        }
         Ok(None) => IpcResult::success(OpenCloudStatus {
             configured: false,
             reason: None,
@@ -545,4 +567,16 @@ async fn live_workspace_children() {
         Ok(reply) => println!("WORKSPACE: {}", reply),
         Err(error) => eprintln!("call failed: {error}"),
     }
+}
+/// Does a saved key survive into a later read? Run after the UI saved one.
+#[test]
+#[ignore = "reads the real OS keychain"]
+fn live_status_sees_a_saved_key() {
+    let status = roblox_opencloud_status();
+    println!(
+        "configured={:?} userId={:?} reason={:?}",
+        status.data.as_ref().map(|s| s.configured),
+        status.data.as_ref().and_then(|s| s.user_id.clone()),
+        status.data.as_ref().and_then(|s| s.reason.clone())
+    );
 }
