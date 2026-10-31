@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Making sure a generation has an agent to ask.
  *
  * A generation is a model call, so the engine needs a live ACP agent. An agent
@@ -14,6 +14,7 @@
  */
 
 import type { StoredAgentConfig } from '@/lib/acp-agents-persistence'
+import type { AgentConfig } from '@/lib/acp-api'
 import { resolveGeneratorAgent } from '@/lib/generator/agent-selection'
 import { useAcpStore } from '@/stores/acp-store'
 import { useProjectStore } from '@/stores/project-store'
@@ -40,6 +41,26 @@ function configToSpawn(configs: StoredAgentConfig[]): StoredAgentConfig | null {
 }
 
 /**
+ * The launch fields the host accepts, and nothing else.
+ *
+ * A stored config carries a local `id` for durable session matching. The host's
+ * `AgentConfig` is `deny_unknown_fields`, so sending the stored object whole is
+ * rejected with "unknown field `id`" and the agent never starts - which read as
+ * "could not start Claude Agent" on every generation. `ensureLiveAgent` already
+ * builds this projection by hand; this is the same list, in one place.
+ */
+function spawnFields(config: StoredAgentConfig): AgentConfig {
+  return {
+    configId: config.configId,
+    name: config.name,
+    command: config.command,
+    args: config.args,
+    env: config.env,
+    allowTerminal: config.allowTerminal
+  }
+}
+
+/**
  * A live agent for this project, spawning one when none exists.
  *
  * `cwd` is what makes a spawn reusable: the reuse key carries it, so a second
@@ -61,7 +82,7 @@ export async function ensureAgentForGeneration(cwd: string): Promise<EnsureAgent
 
   try {
     const projectId = useProjectStore.getState().activeProjectId
-    const agentId = await state.spawnAgent(config, projectId)
+    const agentId = await state.spawnAgent(spawnFields(config), projectId)
     return { status: 'ready', agentId }
   } catch (cause) {
     const detail = cause instanceof Error ? cause.message : String(cause)
