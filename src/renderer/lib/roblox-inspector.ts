@@ -203,21 +203,32 @@ export interface ModelFacts {
 /**
  * The facts a 3D version carries, or zeros when its report is missing.
  *
+ * Two sources, because they hold different things: the checks report triangles,
+ * size and parts, while the spec holds the rig and the palette. Reading the rig
+ * from the report alone found nothing, so every model claimed to be unrigged.
+ *
  * A version saved before the checks were kept has no report, and the pipeline
- * still has to render: zeros and an em dash say "unknown" instead of inventing a
- * number the model does not have.
+ * still has to render: an em dash says "unknown" instead of inventing a number.
  */
-export function modelFacts(report: ModelReport | null | undefined): ModelFacts {
+export function modelFacts(report: ModelReport | null | undefined, spec?: unknown): ModelFacts {
   const triangles = typeof report?.triangles === 'number' ? report.triangles : 0
   const size = Array.isArray(report?.size) ? report.size : []
-  const parts = typeof report?.parts === 'number' ? report.parts : 0
-  const spec = report as
-    | { rig?: unknown; skeleton?: unknown[]; palette?: unknown }
-    | null
-    | undefined
-  const rig = typeof spec?.rig === 'string' ? spec.rig : ''
-  const joints = Array.isArray(spec?.skeleton) ? spec.skeleton.length : 0
-  const palette = spec?.palette
+  // `parts` is an array in a real report (one entry per top-level part, each with
+  // its own triangle count), and a number in an older or hand-written one. Reading
+  // only the number reported "Parts 0" for every generated model.
+  const parts = Array.isArray(report?.parts)
+    ? report.parts.length
+    : typeof report?.parts === 'number'
+      ? report.parts
+      : 0
+  const authored = (spec ?? null) as {
+    rig?: unknown
+    skeleton?: unknown[]
+    palette?: unknown
+  } | null
+  const rig = typeof authored?.rig === 'string' ? authored.rig : ''
+  const joints = Array.isArray(authored?.skeleton) ? authored.skeleton.length : 0
+  const palette = authored?.palette
   const colours = palette && typeof palette === 'object' ? Object.keys(palette as object).length : 0
 
   return {

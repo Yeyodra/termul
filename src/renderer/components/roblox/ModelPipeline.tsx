@@ -1,4 +1,4 @@
-/**
+﻿/**
  * The three nodes above the 3D viewport, as in RobloxKit's `3d` page.
  *
  * RobloxKit's model page carries a labelled pipeline - `3d/kind`, `3d/rig` or
@@ -46,7 +46,7 @@ export function ModelPipeline({
   onOpenTab
 }: ModelPipelineProps): React.JSX.Element {
   const report = (version?.report ?? null) as ModelReport | null
-  const facts = modelFacts(report)
+  const facts = modelFacts(report, version?.design)
   const running = stage.state === 'running'
   const ok = version?.ok !== false
 

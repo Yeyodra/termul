@@ -53,9 +53,16 @@ describe('modelFacts', () => {
   })
 
   it('treats a skeleton as rigged and a bare palette as a shape', () => {
-    expect(modelFacts({ rig: 'custom', skeleton: [{}, {}] }).rigged).toBe(true)
-    expect(modelFacts({ palette: { a: '#fff', b: '#000' } }).rigged).toBe(false)
-    expect(modelFacts({ palette: { a: '#fff', b: '#000' } }).colours).toBe(2)
+    expect(modelFacts(null, { rig: 'custom', skeleton: [{}, {}] }).rigged).toBe(true)
+    expect(modelFacts(null, { palette: { a: '#fff', b: '#000' } }).rigged).toBe(false)
+    expect(modelFacts(null, { palette: { a: '#fff', b: '#000' } }).colours).toBe(2)
+  })
+
+  it('counts parts from the array a real report carries', () => {
+    // A generated report lists one entry per top-level part; reading it as a
+    // number reported "Parts 0" for every model.
+    const facts = modelFacts({ parts: [{ name: 'A' }, { name: 'B' }, { name: 'C' }] })
+    expect(facts.parts).toBe(3)
   })
 })
 
@@ -80,7 +87,8 @@ describe('ModelPipeline', () => {
     const active = record({ n: 1, kind: 'character' })
     const version = {
       ...active.versions[0],
-      report: { ok: true, triangles: 900, size: [2, 4, 2], rig: 'custom', skeleton: [{}, {}] }
+      report: { ok: true, triangles: 900, size: [2, 4, 2] },
+      design: { rig: 'custom', skeleton: [{}, {}] }
     } as RecordVersion
     render(<ModelPipeline record={active} version={version} stage={stage()} onOpenTab={vi.fn()} />)
 
@@ -93,7 +101,7 @@ describe('ModelPipeline', () => {
     const active = record({ n: 1 })
     const version = {
       ...active.versions[0],
-      report: { ok: true, triangles: 3388, size: [4, 3, 5], parts: 9 }
+      report: { ok: true, triangles: 3388, size: [4, 3, 5] }
     } as RecordVersion
     render(<ModelPipeline record={active} version={version} stage={stage()} onOpenTab={vi.fn()} />)
 
