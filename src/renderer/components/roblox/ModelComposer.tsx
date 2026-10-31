@@ -102,6 +102,9 @@ export function ModelComposer({
         category: revising
           ? ((currentVersion(revising).kind ?? revising.kind) as ModelCategory)
           : effective,
+        // A creature needs its own bones. Left unset the engine assumes R15, so a
+        // dog came back with a humanoid rig and an empty skeleton.
+        rig: inferred?.rig,
         recordSlug: revising?.slug,
         base: revising ? currentVersion(revising).design : undefined,
         onStage: (stage, detail) => {

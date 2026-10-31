@@ -42,6 +42,14 @@ export interface ModelRunOptions {
   projectPath: string
   prompt: string
   category: ModelCategory
+  /**
+   * The skeleton to build: `R15`, `R6`, or `custom`.
+   *
+   * A creature needs `custom` and its own bone list. Left unset the engine
+   * assumes R15, so a dog came back with `rig: "R15"` and an empty skeleton -
+   * a humanoid rig on a quadruped, which is why the body had no legs to pose.
+   */
+  rig?: string
   /** The record this generation revises, when it revises one. */
   recordSlug?: string
   /**
@@ -110,6 +118,7 @@ export async function runModelGeneration(options: ModelRunOptions): Promise<Mode
   const queued = queueGenerate3D(deps.model3d, {
     prompt: options.prompt,
     category: options.category,
+    rig: options.rig,
     recordSlug: options.recordSlug,
     spec: options.base
   })

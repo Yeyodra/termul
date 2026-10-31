@@ -48,6 +48,7 @@ function press(): void {
 interface Run {
   prompt: string
   category: string
+  rig?: string
   recordSlug?: string
   base?: unknown
 }
@@ -151,6 +152,26 @@ describe('the 3D composer', () => {
     // out as boxes. The prompt is a better signal than the picker here.
     expect(run.category).toBe('character')
     expect(await screen.findByText(/rigged character/)).toBeInTheDocument()
+  })
+
+  it('sends the creature its own rig, not the humanoid default', async () => {
+    renderComposer()
+    typePrompt('a brown puppy')
+    press()
+
+    const run = await lastRun()
+    // Unset, the engine assumes R15, and a quadruped came back with a humanoid
+    // rig and an empty skeleton.
+    expect(run.rig).toBe('custom')
+  })
+
+  it('sends R15 for a person, which is the rig the engine expects', async () => {
+    renderComposer()
+    typePrompt('a knight')
+    press()
+
+    const run = await lastRun()
+    expect(run.rig).toBe('R15')
   })
 
   it('keeps a statue of a creature a prop', async () => {
