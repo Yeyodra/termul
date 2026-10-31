@@ -2,7 +2,7 @@
 
 use serde_json::json;
 
-use crate::roblox::place_key::{parse_probe, PlaceProbe};
+use crate::roblox::place_key::{execute_luau_args, parse_probe, PlaceProbe, DATAMODEL_TYPE};
 
 fn reply_with(text: &str) -> serde_json::Value {
     json!({ "result": { "content": [{ "type": "text", "text": text }] } })
@@ -108,4 +108,17 @@ fn returns_none_for_a_reply_without_content() {
 fn returns_none_when_the_text_is_not_json() {
     let reply = reply_with("not json");
     assert_eq!(parse_probe(reply.get("result")), None);
+}
+
+/// Studio refuses the call without this field, and the refusal only shows up when
+/// something actually runs Luau - so every insert failed with a message that read
+/// like a Studio problem. Verified live: with the field, the same call answers
+/// `Baseplate [Part], Terrain [Terrain], Camera [Camera]`.
+#[test]
+fn an_execute_luau_call_carries_the_datamodel_type() {
+    let args = execute_luau_args("studio-1", "return 1");
+    assert_eq!(args["studio_id"], "studio-1");
+    assert_eq!(args["code"], "return 1");
+    assert_eq!(args["datamodel_type"], DATAMODEL_TYPE);
+    assert_eq!(DATAMODEL_TYPE, "Edit");
 }

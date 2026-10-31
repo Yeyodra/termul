@@ -20,6 +20,15 @@ mod tests;
 /// Tool that runs Luau inside the target Studio.
 pub const EXECUTE_LUAU_TOOL: &str = "execute_luau";
 
+/// Which DataModel `execute_luau` should run against.
+///
+/// Studio's MCP rejects the call outright without it: the reply is
+/// `datamodel_type is required`, so *every* Luau round-trip failed - the place
+/// probe, the rig assembly, and the insert an upload performs. `Edit` is the
+/// DataModel a user has open; the other values are the running client/server
+/// models, which this app never targets.
+pub const DATAMODEL_TYPE: &str = "Edit";
+
 /// Mints a GUID when the place is unpublished and has none yet.
 const PROBE_LUAU: &str = r#"
 local HttpService = game:GetService("HttpService")
@@ -106,18 +115,29 @@ pub fn parse_probe(result: Option<&serde_json::Value>) -> Option<PlaceProbe> {
     serde_json::from_str::<PlaceProbe>(text).ok()
 }
 
+/// The arguments an `execute_luau` call needs.
+///
+/// Split out so a test can assert them without a live Studio: the call is refused
+/// with `datamodel_type is required` when the field is missing, and that failure
+/// is invisible until something actually runs Luau - which made every insert look
+/// like a Studio problem rather than a missing parameter.
+pub fn execute_luau_args(studio_id: &str, code: &str) -> serde_json::Value {
+    serde_json::json!({
+        "studio_id": studio_id,
+        "datamodel_type": DATAMODEL_TYPE,
+        "code": code,
+    })
+}
+
 /// Probe the open place in `studio_id`.
 ///
-/// `Ok(None)` means Studio answered but no place is loaded — a normal state, not
+/// `Ok(None)` means Studio answered but no place is loaded - a normal state, not
 /// a failure. `Err` means the tool call itself failed.
 pub async fn probe_place(
     session: &mut StudioSession,
     studio_id: &str,
 ) -> Result<Option<PlaceProbe>, String> {
-    let args = serde_json::json!({
-        "studio_id": studio_id,
-        "code": PROBE_LUAU,
-    });
+    let args = execute_luau_args(studio_id, PROBE_LUAU);
     let result = session.call_tool(EXECUTE_LUAU_TOOL, args).await?;
     Ok(parse_probe(result.get("result")))
 }

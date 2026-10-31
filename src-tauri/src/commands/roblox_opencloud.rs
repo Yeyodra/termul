@@ -293,7 +293,11 @@ pub async fn roblox_upload_model(
             Some(session) => session
                 .call_tool(
                     crate::roblox::place_key::EXECUTE_LUAU_TOOL,
-                    serde_json::json!({ "studio_id": studio_id, "code": code }),
+                    serde_json::json!({
+                        "studio_id": studio_id,
+                        "datamodel_type": crate::roblox::place_key::DATAMODEL_TYPE,
+                        "code": code
+                    }),
                 )
                 .await
                 .map(|reply| reply.to_string())
@@ -424,5 +428,121 @@ mod tests {
         };
         assert!(disabled.upload_blocker().unwrap().contains("disabled"));
         assert!(expired.upload_blocker().unwrap().contains("expired"));
+    }
+}
+
+/// The whole path, against the real API, with a real key.
+///
+/// Ignored by default: it needs `TERMUL_ROBLOX_OPENCLOUD_KEY` (a key with
+/// asset:write), a Studio place open, and it creates a real asset on the
+/// account. Run it with:
+///
+///   cargo test --lib live_upload -- --ignored --nocapture
+///
+/// It exists because every other test in this file stops at a local server, and
+/// the two defects that mattered - polling under the wrong base, and a model
+/// reported as `model` rather than `atlas` - were invisible to all of them.
+#[tokio::test]
+#[ignore = "hits the live Roblox API and creates an asset; needs TERMUL_ROBLOX_OPENCLOUD_KEY"]
+async fn live_upload_saves_a_key_and_uploads_a_model() {
+    let Ok(key) = std::env::var("TERMUL_ROBLOX_OPENCLOUD_KEY") else {
+        eprintln!("set TERMUL_ROBLOX_OPENCLOUD_KEY to run this");
+        return;
+    };
+
+    // 1. The save path must accept the key, which is what introspect decides.
+    let saved = roblox_opencloud_save_key(key.clone(), Some("834159885".to_string())).await;
+    assert!(saved.success, "save rejected the key: {:?}", saved.error);
+    let status = saved.data.expect("status");
+    assert!(status.configured, "the key did not stay configured");
+    assert_eq!(status.user_id.as_deref(), Some("834159885"));
+
+    // 2. A real GLB, from the smallest generated model on this machine.
+    let glb = std::fs::read(
+        "C:/Users/Novella/Documents/robloxkit/.termul/generated/prop/small-wooden-barrel/v1.glb",
+    )
+    .expect("a generated model to upload");
+    use base64::Engine as _;
+    let encoded = base64::engine::general_purpose::STANDARD.encode(&glb);
+
+    // 3. Upload. `studio_id` is left out on purpose: this asserts the upload and
+    //    the poll, not the insert, which needs a live place.
+    let result = roblox_upload_model(
+        encoded,
+        "termul-live-probe".to_string(),
+        Some("Made with Termul".to_string()),
+        std::env::var("TERMUL_ROBLOX_STUDIO_ID").ok(),
+        std::env::var("TERMUL_ROBLOX_LUAU").unwrap_or_else(|_| "return 1".to_string()),
+    )
+    .await
+    .expect("the command itself returns Ok even when the upload fails");
+
+    match result.data {
+        Some(uploaded) => {
+            assert!(uploaded.asset_id > 0, "no asset id");
+            println!("uploaded asset {}", uploaded.asset_id);
+        }
+        None => panic!("upload failed: {:?} {:?}", result.code, result.error),
+    }
+}
+/// Print the live Studio ids, so the insert path can be driven by hand.
+#[tokio::test]
+#[ignore = "needs a running Studio with a place open"]
+async fn live_list_studios() {
+    let Some(exe) = crate::roblox::find_studio_mcp() else {
+        eprintln!("no Studio MCP found");
+        return;
+    };
+    let Ok(mut guard) = crate::roblox::session::probe_session(&exe).await else {
+        eprintln!("no session");
+        return;
+    };
+    let Some(session) = guard.as_mut() else {
+        eprintln!("no session");
+        return;
+    };
+    match session.list_studios().await {
+        Ok(studios) => {
+            for studio in studios {
+                println!("studio_id={} name={:?}", studio.id, studio.name);
+            }
+        }
+        Err(error) => eprintln!("list failed: {error}"),
+    }
+}
+/// What is actually in the open place, printed. Proves an insert landed.
+#[tokio::test]
+#[ignore = "needs a running Studio with a place open"]
+async fn live_workspace_children() {
+    let Ok(studio_id) = std::env::var("TERMUL_ROBLOX_STUDIO_ID") else {
+        eprintln!("set TERMUL_ROBLOX_STUDIO_ID");
+        return;
+    };
+    let Some(exe) = crate::roblox::find_studio_mcp() else {
+        eprintln!("no Studio MCP");
+        return;
+    };
+    let Ok(mut guard) = crate::roblox::session::probe_session(&exe).await else {
+        eprintln!("no session");
+        return;
+    };
+    let Some(session) = guard.as_mut() else {
+        eprintln!("no session");
+        return;
+    };
+    let code = "local names = {} for _, c in ipairs(workspace:GetChildren()) do table.insert(names, c.Name .. ' [' .. c.ClassName .. ']') end return table.concat(names, ', ')";
+    match session
+        .call_tool(
+            crate::roblox::place_key::EXECUTE_LUAU_TOOL,
+            serde_json::json!({
+                "studio_id": studio_id,
+                "datamodel_type": crate::roblox::place_key::DATAMODEL_TYPE,
+                "code": code
+            }),
+        )
+        .await
+    {
+        Ok(reply) => println!("WORKSPACE: {}", reply),
+        Err(error) => eprintln!("call failed: {error}"),
     }
 }
