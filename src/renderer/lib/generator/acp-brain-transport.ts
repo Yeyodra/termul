@@ -35,6 +35,21 @@ export interface AcpBrainTransportOptions {
 const DEFAULT_TURN_TIMEOUT_MS = 300_000
 
 /**
+ * Turns that author a spec need longer than a chat turn, because the spec grows
+ * with the model: a 1:1 creature is hundreds of nodes, and a 5-minute ceiling
+ * silently capped the detail an engine could ask for. A dragon turn that was
+ * told to write 132 meshes hit the ceiling and produced nothing at all.
+ */
+const AUTHORING_TURN_TIMEOUT_MS = 900_000
+
+const AUTHORING_SCOPES = ['gen/3d', 'gen/clothing']
+
+function timeoutFor(scope: string, override?: number): number {
+  if (override != null) return override
+  return AUTHORING_SCOPES.includes(scope) ? AUTHORING_TURN_TIMEOUT_MS : DEFAULT_TURN_TIMEOUT_MS
+}
+
+/**
  * Build a `BrainTransport` that runs one turn per call on a fresh session.
  *
  * The system prompt is already folded into the first user message by
@@ -42,7 +57,7 @@ const DEFAULT_TURN_TIMEOUT_MS = 300_000
  * just as well, since ACP has no portable one.
  */
 export function createAcpBrainTransport(options: AcpBrainTransportOptions): BrainTransport {
-  const timeoutMs = options.turnTimeoutMs ?? DEFAULT_TURN_TIMEOUT_MS
+  const override = options.turnTimeoutMs
 
   return {
     async send({ scope, messages, brain }) {
@@ -73,6 +88,7 @@ export function createAcpBrainTransport(options: AcpBrainTransportOptions): Brai
         if (typeof chunk === 'string') collected += chunk
       })
 
+      const timeoutMs = timeoutFor(scope, override)
       const finished = new Promise<void>((resolve, reject) => {
         const timer = setTimeout(() => {
           reject(new Error(`the ${scope} turn produced nothing within ${timeoutMs} ms`))
