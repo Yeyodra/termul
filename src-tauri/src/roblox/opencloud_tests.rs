@@ -264,19 +264,21 @@ fn an_asset_id_is_read_whether_roblox_sends_a_number_or_a_string() {
 
 #[test]
 fn a_poll_url_is_absolute_and_absent_once_done() {
+    // The path the live API actually returns: an operation id under
+    // `operations/`, which belongs to the Assets API rather than to `cloud/v2`.
     let pending: Operation =
-        serde_json::from_str(r#"{"path":"assets/v1/assets/9/versions/1","done":false}"#).unwrap();
+        serde_json::from_str(r#"{"path":"operations/abc-123","done":false}"#).unwrap();
     assert_eq!(
         pending.poll_url(OPERATION_BASE_URL).as_deref(),
-        Some("https://apis.roblox.com/cloud/v2/assets/v1/assets/9/versions/1")
+        Some("https://apis.roblox.com/assets/v1/operations/abc-123")
     );
 
     // A leading slash must not double up.
     let slashed: Operation =
-        serde_json::from_str(r#"{"path":"/assets/v1/assets/9","done":false}"#).unwrap();
+        serde_json::from_str(r#"{"path":"/operations/abc-123","done":false}"#).unwrap();
     assert_eq!(
         slashed.poll_url(OPERATION_BASE_URL).as_deref(),
-        Some("https://apis.roblox.com/cloud/v2/assets/v1/assets/9")
+        Some("https://apis.roblox.com/assets/v1/operations/abc-123")
     );
 
     let done: Operation = serde_json::from_str(r#"{"path":"x","done":true}"#).unwrap();

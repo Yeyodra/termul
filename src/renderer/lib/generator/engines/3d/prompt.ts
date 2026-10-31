@@ -43,13 +43,13 @@ import {
 export const CATEGORY_GUIDES: Record<string, string> = {
   accessory:
     'A wearable on one attachment point. It must fit inside its own UGC bounds (see the accessory table), so a hat is at most 3 x 4 x 3 studs. Set `accessoryType` to the slot it occupies. Keep it under 4000 triangles; under 3600 is safer.',
-  prop: 'A free-standing object: a crate, a lamp, a weapon on a rack. It has no attachment point and no UGC bounds, only the spec extent limit. Give it a footprint that reads from several angles and a base that sits at y = 0.',
+  prop: 'A free-standing object: a crate, a lamp, a weapon on a rack, a creature that is not rigged. It has no attachment point and no UGC bounds, only the spec extent limit. Give it a footprint that reads from several angles and a base that sits at y = 0. A prop is still built at the size the request names: a life-size dragon is about 43 studs long, not 13. Structure it in named groups - a body, a neck, a head, wings, legs, a tail - rather than one lump, and give each group enough parts that its silhouette reads.',
   building:
     'A structure: a wall section, a doorway, a tower. No UGC bounds apply, so size is limited only by the extent rule. Build from repeated parts and use `array` for regularity rather than authoring each copy.',
   tool: 'Something a character holds. Keep it under about 8 studs in its longest axis or it reads as too large to carry. The grip should be at the origin so it lines up with the hand.',
   text: 'A sign or a label. Use the `text` node for the letters themselves; the font is fixed and the text is centred on its bounding box automatically.',
   character:
-    'A rigged body. Every top-level part is a bone and needs a `name` and a `pivot`. `rig: "R15"` or `"R6"` must use the canonical part names exactly; `rig: "custom"` must list every bone in `skeleton` with exactly one root. Pivots sit at the joint, where a part meets its parent.'
+    'A rigged body. Every top-level part is a bone and needs a `name` and a `pivot`. `rig: "R15"` or `"R6"` must use the canonical part names exactly; `rig: "custom"` must list every bone in `skeleton` with exactly one root. Pivots sit at the joint, where a part meets its parent. A humanoid is about 5 studs wide and 6 tall; anything that is not a human - a quadruped, a dragon, a bird - needs `rig: "custom"` with its own bones, and its size follows the subject, so a 12 m dragon is about 43 studs long.'
 }
 
 /** The 8 accessory slots and their UGC bounds, from `check.ts`. */
@@ -204,6 +204,29 @@ A textured colour names an entry in \`textures\` and sets \`tile\` to studs per 
 Author the model with the face at **+Z** and **+Y up**. Feet sit at y = 0, so the model stands on the ground.
 
 The exporter mirrors X and Z so the GLB and OBJ have their front at **-Z**, which is Roblox's convention. You do not do that mirroring; you author at +Z and the export handles it. What this means for you: put the face, the chest and any front detail at positive Z, and the back at negative Z.
+
+## Scale
+
+Everything is in studs. **1 stud = 0.28 m**, so **1 m = 3.57 studs**. A request that gives a real-world size is asking you to convert, not to approximate:
+
+| Real object | Studs (longest axis) |
+| --- | --- |
+| A human, 1.75 m | 6 |
+| A door, 2 m | 7 |
+| A car, 4.5 m | 16 |
+| A bus, 12 m | 43 |
+| A house, 8 m | 29 |
+| A five-storey building, 15 m | 54 |
+| A dragon, 12 m nose to tail | 43 |
+| A mythological beast, 20 m | 71 |
+
+Rules that follow from this:
+
+- **"1:1", "life size", "real scale", "actual size" means the converted number.** A 12 m dragon is about 43 studs long. A 4-stud dragon is a toy, not a dragon, and it will be rejected as one.
+- **Read the size back before you answer.** The report tells you the model's size in studs; if the request named a real dimension, check the conversion matches. 43 studs is right for 12 m; 13 studs is a lizard.
+- **Detail scales with the subject, not with the triangle budget.** A 43-stud creature needs a segmented neck, a tapering tail, individual toes and layered scales; a 43-stud building needs rows of windows. Using four boxes because "the budget is 20000 triangles" wastes the budget and produces a toy.
+- **The extent limit is 200 studs** on any single axis, which is 56 m. Almost nothing a user asks for is larger than that, so size is almost never the reason to build small.
+- An accessory is the exception: its UGC bounds are the limit, and they are listed below.
 
 ## Categories
 

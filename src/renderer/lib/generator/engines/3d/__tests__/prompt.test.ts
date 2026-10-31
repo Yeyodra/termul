@@ -377,3 +377,35 @@ describe('firstMessage', () => {
     expect(message.split('\n\n')).toHaveLength(3)
   })
 })
+
+describe('the scale guidance', () => {
+  it('states the stud-to-metre conversion, so "1:1" is a number and not a mood', () => {
+    const prompt = MODEL_3D_SYSTEM_PROMPT
+    expect(prompt).toContain('1 stud = 0.28 m')
+    expect(prompt).toContain('1 m = 3.57 studs')
+  })
+
+  it('gives the converted size for the subjects users actually ask for', () => {
+    const prompt = MODEL_3D_SYSTEM_PROMPT
+    // A dragon that comes back 13 studs long is a lizard; 43 is 12 m.
+    expect(prompt).toContain('12 m nose to tail')
+    expect(prompt).toContain('43')
+    expect(prompt).toContain('1.75 m')
+  })
+
+  it('tells a prop that it is still built at the size the request names', () => {
+    // The dragon came back as an 8-part, 13-stud prop because the prop guide
+    // mentioned no size at all and the model had nothing to aim at.
+    expect(CATEGORY_GUIDES.prop).toContain('life-size')
+    expect(CATEGORY_GUIDES.prop).toContain('43 studs')
+  })
+
+  it('tells a non-human character that its size follows the subject', () => {
+    expect(CATEGORY_GUIDES.character).toContain('rig: "custom"')
+    expect(CATEGORY_GUIDES.character).toContain('43 studs')
+  })
+
+  it('says the extent limit is not the reason to build small', () => {
+    expect(MODEL_3D_SYSTEM_PROMPT).toContain('200 studs')
+  })
+})

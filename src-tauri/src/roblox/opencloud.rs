@@ -29,7 +29,12 @@ use serde::{Deserialize, Serialize};
 /// The Assets endpoint that creates an asset.
 pub const CREATE_ASSET_URL: &str = "https://apis.roblox.com/assets/v1/assets";
 /// The prefix a polled operation `path` is appended to.
-pub const OPERATION_BASE_URL: &str = "https://apis.roblox.com/cloud/v2/";
+///
+/// The create call answers `{"path":"operations/<id>"}`, and that path belongs to
+/// the Assets API, not to `cloud/v2` - polling under `cloud/v2` answers 404 with
+/// an empty error, so a real upload looked like a failed one. Verified against
+/// the live API: `assets/v1/operations/<id>` returns `done` and the `assetId`.
+pub const OPERATION_BASE_URL: &str = "https://apis.roblox.com/assets/v1/";
 /// The endpoint that reports whether a key exists and what it may do.
 pub const INTROSPECT_URL: &str = "https://apis.roblox.com/api-keys/v1/introspect";
 

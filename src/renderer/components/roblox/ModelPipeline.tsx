@@ -49,6 +49,11 @@ export function ModelPipeline({
   const facts = modelFacts(report, version?.design)
   const running = stage.state === 'running'
   const ok = version?.ok !== false
+  // RobloxKit keeps these nodes mounted while a build runs and writes "Building…"
+  // in the model node, so the pipeline is the progress readout rather than a
+  // summary that appears only once there is something to summarise.
+  const built = Boolean(report)
+  const label = running ? (stage.detail ?? stage.stage ?? 'Building…') : null
 
   // A rigged model reports its skeleton; an unrigged one reports its shape. That
   // is the split RobloxKit makes between `3d/rig` and `3d/shape`.
@@ -68,11 +73,11 @@ export function ModelPipeline({
         </span>
         <span className={KV}>
           <span>Parts</span>
-          <span className="tabular-nums">{facts.parts}</span>
+          <span className="tabular-nums">{built ? facts.parts : '—'}</span>
         </span>
         <span className={KV}>
           <span>Version</span>
-          <span className="tabular-nums">v{version?.n ?? 1}</span>
+          <span className="tabular-nums">{version ? `v${version.n}` : '—'}</span>
         </span>
       </button>
 
@@ -106,16 +111,26 @@ export function ModelPipeline({
           <span aria-hidden="true" className={dotClass(stage.state, ok)} />
           {version?.prompt?.trim() || record?.slug || 'Nothing yet'}
         </span>
-        <span className={KV}>
-          <span>Triangles</span>
-          <span className="tabular-nums">{facts.trianglesLabel}</span>
-        </span>
-        <span className={KV}>
-          <span>Status</span>
-          <span className={cn(running ? 'text-warning' : ok ? 'text-success' : 'text-destructive')}>
-            {running ? 'running' : ok ? 'ready' : 'failed'}
-          </span>
-        </span>
+        {built ? (
+          <>
+            <span className={KV}>
+              <span>Triangles</span>
+              <span className="tabular-nums">{facts.trianglesLabel}</span>
+            </span>
+            <span className={KV}>
+              <span>Status</span>
+              <span
+                className={cn(running ? 'text-warning' : ok ? 'text-success' : 'text-destructive')}
+              >
+                {running ? 'running' : ok ? 'ready' : 'failed'}
+              </span>
+            </span>
+          </>
+        ) : (
+          // No report yet: say what the engine is doing instead of showing zeros
+          // that read as a finished, empty model.
+          <span className="truncate text-3xs text-muted-foreground">{label ?? 'Nothing yet'}</span>
+        )}
       </button>
     </div>
   )

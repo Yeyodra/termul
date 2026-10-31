@@ -124,14 +124,15 @@ export function ModelViewport({ projectPath }: ModelViewportProps): React.JSX.El
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-1 overflow-hidden">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        {active && version ? (
-          <ModelPipeline
-            record={active}
-            version={version}
-            stage={stage}
-            onOpenTab={(next) => setTab(next)}
-          />
-        ) : null}
+        {/* Always mounted: on a fresh page these nodes are the only place a
+            generation reports what it is doing, which is exactly when the user is
+            waiting and has nothing else to read. */}
+        <ModelPipeline
+          record={active}
+          version={version}
+          stage={stage}
+          onOpenTab={(next) => setTab(next)}
+        />
         <div className="relative flex min-h-0 flex-1 flex-col">
           <ArtifactViewportPanel
             artifact={artifact}

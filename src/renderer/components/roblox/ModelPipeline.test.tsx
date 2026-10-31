@@ -111,13 +111,12 @@ describe('ModelPipeline', () => {
 
   it('says ready, running or failed from the version and the stage', () => {
     const active = record({ n: 1, ok: true })
+    const withReport = {
+      ...active.versions[0],
+      report: { ok: true, triangles: 900, size: [2, 4, 2] }
+    } as RecordVersion
     const { unmount } = render(
-      <ModelPipeline
-        record={active}
-        version={active.versions[0]}
-        stage={stage()}
-        onOpenTab={vi.fn()}
-      />
+      <ModelPipeline record={active} version={withReport} stage={stage()} onOpenTab={vi.fn()} />
     )
     expect(screen.getByText('ready')).toBeInTheDocument()
     unmount()
@@ -125,7 +124,7 @@ describe('ModelPipeline', () => {
     render(
       <ModelPipeline
         record={active}
-        version={active.versions[0]}
+        version={withReport}
         stage={stage({ state: 'running' })}
         onOpenTab={vi.fn()}
       />
@@ -152,6 +151,58 @@ describe('ModelPipeline', () => {
   it('renders with no record at all, so a draft page is not blank above the viewport', () => {
     render(<ModelPipeline record={null} version={null} stage={stage()} onOpenTab={vi.fn()} />)
     expect(screen.getByText('3d/kind')).toBeInTheDocument()
-    expect(screen.getByText('Nothing yet')).toBeInTheDocument()
+    expect(screen.getAllByText('Nothing yet').length).toBeGreaterThan(0)
+  })
+})
+
+describe('the pipeline while a build runs', () => {
+  it('stays mounted with no record, which is when progress matters most', () => {
+    render(
+      <ModelPipeline
+        record={null}
+        version={null}
+        stage={stage({ state: 'running', stage: 'designing' })}
+        onOpenTab={vi.fn()}
+      />
+    )
+
+    expect(screen.getByText('3d/kind')).toBeInTheDocument()
+    expect(screen.getByText('3d/shape')).toBeInTheDocument()
+    expect(screen.getByText('3d/model')).toBeInTheDocument()
+  })
+
+  it('says what the engine is doing instead of showing zeros for a model that is not built yet', () => {
+    render(
+      <ModelPipeline
+        record={null}
+        version={null}
+        stage={stage({ state: 'running', stage: 'building', detail: 'Building it' })}
+        onOpenTab={vi.fn()}
+      />
+    )
+
+    // The engine's own line wins: it is the difference between a spinner and
+    // knowing which step is running.
+    expect(screen.getByText('Building it')).toBeInTheDocument()
+    // A dash, not a zero: a zero reads as a finished model with no geometry.
+    expect(screen.getByText('Parts').nextSibling?.textContent).toBe('—')
+  })
+
+  it('falls back to the stage name when the engine gives no detail', () => {
+    render(
+      <ModelPipeline
+        record={null}
+        version={null}
+        stage={stage({ state: 'running', stage: 'checking' })}
+        onOpenTab={vi.fn()}
+      />
+    )
+    expect(screen.getByText('checking')).toBeInTheDocument()
+  })
+
+  it('shows a dash, not a fake version, before anything is written', () => {
+    render(<ModelPipeline record={null} version={null} stage={stage()} onOpenTab={vi.fn()} />)
+    expect(screen.getByText('Parts')).toBeInTheDocument()
+    expect(screen.queryByText('v1')).toBeNull()
   })
 })
