@@ -162,6 +162,8 @@ export interface SpecNode {
   children?: SpecNode[]
   mirror?: 'x' | 'z'
   array?: { count?: unknown; radial?: boolean; step?: unknown }
+  /** A run of segments that must physically join: a neck, a tail, a limb. */
+  chain?: boolean
   op?: string
   id?: string
   params?: Record<string, unknown>
@@ -439,6 +441,78 @@ export function checkRig(spec: Partial<ModelSpec>): string[] {
 }
 
 /**
+ * How far a node reaches from its own centre along the chain, in studs.
+ *
+ * A chain is a run of segments that must physically join: a neck, a tail, a
+ * limb. `height` is the axis a cylinder or capsule extends along, and a sphere
+ * reaches its radius every way.
+ */
+function reachOf(node: SpecNode, scalar: (value: unknown) => number): number {
+  const radius = scalar(node.radius ?? node.radiusTop ?? 0)
+  switch (node.type) {
+    case 'sphere':
+      return radius
+    case 'cylinder':
+    case 'capsule':
+      return scalar(node.height ?? node.length ?? 0) / 2
+    case 'cone':
+      return scalar(node.height ?? 0) / 2
+    case 'box':
+    case 'roundedBox': {
+      const size = (node.size as unknown[]) ?? []
+      const axes = size.map((value) => scalar(value))
+      return axes.length ? Math.max(...axes) / 2 : radius
+    }
+    default:
+      return radius
+  }
+}
+
+/**
+ * Reject a `chain` group whose consecutive segments do not touch.
+ *
+ * The failure this catches is real and was shipped: a generated 1:1 dragon put
+ * 15 neck pieces 2.2 studs apart when each was 1.9 studs wide, and the render
+ * showed floating beads where a neck should be. Nothing in the schema noticed,
+ * because a spec is geometrically valid however far apart its parts sit. Marking
+ * a group `chain` opts into the rule, so a row of separate rocks still passes.
+ */
+function chainContinuity(field: string, group: SpecNode, params: Record<string, number>): string[] {
+  const problems: string[] = []
+  const scalar = (value: unknown): number => {
+    try {
+      const result = evaluate(value, params)
+      return Number.isFinite(result) ? result : 0
+    } catch {
+      return 0
+    }
+  }
+
+  const segments = (group.children ?? []).filter(
+    (child) => child && typeof child === 'object' && child.position
+  )
+  for (let index = 1; index < segments.length; index++) {
+    const previous = segments[index - 1]
+    const current = segments[index]
+    const before = (previous.position as unknown[]).map((value) => scalar(value))
+    const after = (current.position as unknown[]).map((value) => scalar(value))
+    const distance = Math.hypot(
+      (after[0] ?? 0) - (before[0] ?? 0),
+      (after[1] ?? 0) - (before[1] ?? 0),
+      (after[2] ?? 0) - (before[2] ?? 0)
+    )
+    const reach = reachOf(previous, scalar) + reachOf(current, scalar)
+    if (distance > reach) {
+      problems.push(
+        `${field}.chain[${index}]: ${distance.toFixed(2)} studs from the segment before it, ` +
+          `which reaches ${reach.toFixed(2)}; the chain has a gap. Move it closer, or make it longer.`
+      )
+    }
+  }
+  return problems
+}
+
+/**
  * Every problem with a spec, in the order the original reports them.
  *
  * Returns `[]` when the spec is valid. The strings are echoed to the model
@@ -680,6 +754,9 @@ export function validateSpec(spec: unknown): string[] {
         ;(n.children ?? []).forEach((child, index) => {
           node(`${field}.children[${index}]`, child, depth + 1)
         })
+        if (n.chain) {
+          problems.push(...chainContinuity(field, n, params))
+        }
         return
       }
       case 'template': {

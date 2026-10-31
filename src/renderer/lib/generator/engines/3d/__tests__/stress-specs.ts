@@ -45,22 +45,72 @@ function dragon(): ModelSpec {
   ]
   const R = (metres: number) => metres * STUD_PER_METRE
 
-  const spineSegments = 14
-  const neckSegments = 11
-  const tailSegments = 16
+  /**
+   * Place `count` segments along a curve so each one overlaps the next.
+   *
+   * The step is a fraction of the two radii, not a fixed distance: that is what
+   * keeps a tapering chain closed. A fixed step leaves a gap as soon as the
+   * segments get thinner, which is exactly how the shipped dragon came out with
+   * floating beads for a neck.
+   */
+  const walkChain = (
+    count: number,
+    radiusAt: (index: number) => number,
+    curve: (u: number) => [number, number, number]
+  ) => {
+    const SAMPLES = 600
+    const points: [number, number, number][] = []
+    for (let index = 0; index <= SAMPLES; index++) points.push(curve(index / SAMPLES))
+    const cumulative = [0]
+    for (let index = 1; index <= SAMPLES; index++) {
+      const [ax, ay, az] = points[index - 1]
+      const [bx, by, bz] = points[index]
+      cumulative.push(cumulative[index - 1] + Math.hypot(bx - ax, by - ay, bz - az))
+    }
+    const total = cumulative[SAMPLES]
 
-  const spine = Array.from({ length: spineSegments }, (_, index) => {
-    const t = index / (spineSegments - 1)
-    const wave = Math.sin(t * Math.PI * 1.3) * 0.55
-    const radius = 0.8 - Math.abs(t - 0.4) * 0.5
-    return sphere(R(radius), P(wave, 1.9 + Math.cos(t * Math.PI) * 0.15, -1.5 + t * 3.5), 'scale')
-  })
+    const at = (u: number): [number, number, number] => {
+      const target = Math.min(total, Math.max(0, u * total))
+      let low = 0
+      let high = SAMPLES
+      while (low < high) {
+        const mid = (low + high) >> 1
+        if (cumulative[mid] < target) low = mid + 1
+        else high = mid
+      }
+      return points[low]
+    }
 
-  const neck = Array.from({ length: neckSegments }, (_, index) => {
-    const t = index / (neckSegments - 1)
-    const wave = 0.5 + Math.sin(t * Math.PI * 0.9) * 0.45
-    return sphere(R(0.62 - t * 0.24), P(wave, 1.9 + t * 1.5, 2.0 + t * 2.6), 'scale')
-  })
+    const placed: { position: [number, number, number]; radius: number }[] = []
+    let travelled = 0
+    placed.push({ position: at(0), radius: radiusAt(0) })
+    for (let index = 1; index < count; index++) {
+      travelled += 0.78 * (radiusAt(index - 1) + radiusAt(index))
+      placed.push({ position: at(travelled / total), radius: radiusAt(index) })
+    }
+    return placed
+  }
+
+  const spine = walkChain(
+    14,
+    (index) => {
+      const t = index / 13
+      return R(0.8 - Math.abs(t - 0.4) * 0.5)
+    },
+    (u) => P(Math.sin(u * Math.PI * 1.3) * 0.55, 1.9 + Math.cos(u * Math.PI) * 0.15, -1.5 + u * 3.5)
+  ).map(({ position, radius }) => sphere(radius, position, 'scale'))
+
+  const neck = walkChain(
+    12,
+    (index) => R(0.62 - (index / 11) * 0.26),
+    (u) => P(0.5 + Math.sin(u * Math.PI * 0.9) * 0.45, 1.95 + u * 1.6, 1.95 + u * 2.8)
+  ).map(({ position, radius }) => sphere(radius, position, 'scale'))
+
+  const tail = walkChain(
+    18,
+    (index) => R(0.66 - (index / 17) * 0.58),
+    (u) => P(Math.sin(u * Math.PI * 1.8) * 0.7, 1.85 - u * 1.0, -1.5 - u * 4.6)
+  ).map(({ position, radius }, index) => sphere(radius, position, index > 15 ? 'horn' : 'scale'))
 
   const head = [
     sphere(R(0.7), P(0.95, 3.55, 4.75), 'scale'),
@@ -73,16 +123,6 @@ function dragon(): ModelSpec {
     sphere(R(0.1), P(1.22, 3.65, 5.15), 'eye'),
     sphere(R(0.1), P(0.68, 3.65, 5.15), 'eye')
   ]
-
-  const tail = Array.from({ length: tailSegments }, (_, index) => {
-    const t = index / (tailSegments - 1)
-    const wave = Math.sin(t * Math.PI * 1.8) * 0.7
-    return sphere(
-      R(0.66 - t * 0.6),
-      P(wave, 1.9 - t * 1.0, -1.5 - t * 4.5),
-      index > tailSegments - 4 ? 'horn' : 'scale'
-    )
-  })
 
   const leg = (side: 1 | -1, front: boolean) => {
     const z = front ? 1.2 : -0.9
@@ -128,10 +168,10 @@ function dragon(): ModelSpec {
       wing: '#527f47'
     },
     parts: [
-      group('Spine', spine),
-      group('Neck', neck),
+      group('Spine', spine, { chain: true }),
+      group('Neck', neck, { chain: true }),
       group('Head', head),
-      group('Tail', tail),
+      group('Tail', tail, { chain: true }),
       group('FrontLegs', [...leg(1, true), ...leg(-1, true)]),
       group('BackLegs', [...leg(1, false), ...leg(-1, false)]),
       group('Wings', [...wing(1), ...wing(-1)])

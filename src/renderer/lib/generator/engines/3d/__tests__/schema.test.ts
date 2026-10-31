@@ -506,6 +506,42 @@ describe('validateSpec - the J limits', () => {
     expect(validateSpec(spec([group(65)]))).toContain('parts[0].array.count: at most 64')
   })
 
+  it('rejects a chain whose segments do not touch', () => {
+    const link = (y: number): SpecNode => ({
+      type: 'sphere',
+      radius: 1,
+      position: [0, y, 0]
+    })
+    const chain = (children: SpecNode[]): SpecNode => ({
+      name: 'Neck',
+      type: 'group',
+      chain: true,
+      children
+    })
+    expect(validateSpec(spec([chain([link(0), link(1.8), link(3.6)])]))).toEqual([])
+    expect(validateSpec(spec([chain([link(0), link(2.4)])]))).toContain(
+      'parts[0].chain[1]: 2.40 studs from the segment before it, which reaches 2.00; ' +
+        'the chain has a gap. Move it closer, or make it longer.'
+    )
+  })
+
+  it('measures a cylinder along its height, not its radius', () => {
+    const segments: SpecNode[] = [
+      { type: 'cylinder', radius: 0.5, height: 4, position: [0, 0, 0] },
+      { type: 'cylinder', radius: 0.5, height: 4, position: [0, 3.5, 0] }
+    ]
+    expect(validateSpec(spec([{ type: 'group', chain: true, children: segments }]))).toEqual([])
+  })
+
+  it('only enforces continuity where a group opts in with chain', () => {
+    const apart: SpecNode[] = [
+      { type: 'sphere', radius: 1, position: [0, 0, 0] },
+      { type: 'sphere', radius: 1, position: [0, 40, 0] }
+    ]
+    expect(validateSpec(spec([{ type: 'group', children: apart }]))).toEqual([])
+    expect(validateSpec(spec([{ type: 'group', chain: true, children: apart }]))).toHaveLength(1)
+  })
+
   it('rejects array and mirror on a node the builder will not expand', () => {
     expect(
       validateSpec(spec([{ type: 'box', size: [1, 1, 1], array: { count: 9, step: [2, 0, 0] } }]))

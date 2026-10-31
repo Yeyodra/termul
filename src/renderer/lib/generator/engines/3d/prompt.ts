@@ -110,7 +110,7 @@ Reply with exactly one fenced \`\`\`json block and nothing else. No prose before
 
 4 containers:
 
-  group     children, optional mirror ("x" or "z"), optional array
+  group     children, optional mirror ("x" or "z"), optional array, optional chain
   boolean   op (${BOOLEAN_OPS.join(' | ')}), children (2 or more)
   template  id (one of ${TEMPLATE_IDS.join(', ')})
   mesh      positions (flat xyz, a multiple of 9)
@@ -227,6 +227,46 @@ Rules that follow from this:
 - **Detail scales with the subject, not with the triangle budget.** A 43-stud creature needs a segmented neck, a tapering tail, individual toes and layered scales; a 43-stud building needs rows of windows. Using four boxes because "the budget is 20000 triangles" wastes the budget and produces a toy.
 - **The extent limit is 200 studs** on any single axis, which is 56 m. Almost nothing a user asks for is larger than that, so size is almost never the reason to build small.
 - An accessory is the exception: its UGC bounds are the limit, and they are listed below.
+
+## How many parts
+
+Scale says how big. This says how much. A model that is the right size and made of
+eight boxes is still a block, and this is the failure that reads as "bad" to a user.
+
+| Subject | Parts | Triangles |
+| --- | --- | --- |
+| A small prop: barrel, lamp, mug | 10–20 | 800–3 000 |
+| A tool or weapon | 15–30 | 2 000–5 000 |
+| A character | 20–40 | 2 000–6 000 |
+| An accessory | 8–20 | 800–3 500 |
+| A creature, large | 60–120 | 12 000–20 000 |
+| A building exterior | 60–120 | 6 000–18 000 |
+| A furnished interior | 120–250 | 15 000–20 000 |
+
+Rules:
+
+- **The floor is the point, not the ceiling.** Below the floor the model does not read as its subject. Above it you are free; the triangle cap is 20 000 per mesh.
+- **An interior is not a shell.** A room needs its furniture as parts: a bed is a frame, a mattress, a pillow and two nightstands; a kitchen is a counter run, a sink, a fridge and cabinets. Six walls is an empty box, not an apartment.
+- **A large creature needs segments.** At 43 studs, a neck segment is about 2 studs, so a neck is 10–12 spheres or cylinders, and a tail is 12–16 more, each smaller than the last. One box per body part cannot bend.
+- **Count your parts before you answer.** If the request says "detailed", "berliuk-liuk", "furnished" or "complex", the part count is how you show it.
+
+## Curves and taper
+
+A body that bends is built from many short segments, not one long box:
+
+- **A tapering limb or tail** is an \`array\` of a group, or an explicit series, where each copy is smaller and further along the curve. Move each copy in two axes, not one, or the curve is a straight line.
+- **An S-curve** needs the offset to reverse sign: a sine of the index, not a constant \`step\`.
+- **A neck rising from a body** steps up and forward together, so the head ends above and ahead of the shoulders.
+- **Rotation per copy** is what makes a coil, a spring or a curled tail read as curved. \`array\` with \`radial: true\` rotates around Y; otherwise place each segment by hand when the curve is not a circle.
+
+### A chain must not have gaps
+
+Mark a group \`"chain": true\` when its children are segments of one body: a neck, a tail, a spine, a limb. The validator then requires each segment to touch the one before it:
+
+- **The gap is measured centre to centre** against the two reaches: a sphere reaches its radius, a cylinder and capsule reach half their \`height\`.
+- **Space the segments by their size, not by a constant.** A step of 0.75 × (r1 + r2) overlaps slightly and stays closed as the chain tapers. A fixed step of 2.5 studs leaves a gap the moment the segments get thinner than 1.25 — which is the failure that produced a dragon whose neck was floating beads.
+- **Three separate rows are not a chain.** A neck is one row that tapers. Writing a row of capsules, then a row of cylinders, then a row of cones gives three unconnected things; the validator reports the gap between them.
+- A row of separate objects — rocks, fence posts, windows — is **not** a chain, so leave \`chain\` off and they may sit apart.
 
 ## Categories
 

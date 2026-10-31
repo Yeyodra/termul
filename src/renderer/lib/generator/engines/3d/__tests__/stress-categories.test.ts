@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { validateSpec } from '../schema'
 import type { Score } from './stress-score'
 import { report, scoreSpec } from './stress-score'
 import { CASES } from './stress-specs'
@@ -95,6 +96,18 @@ describe('the dragon at 1:1', () => {
   it('beats the baseline that started this work', () => {
     expect(dragon.measure!.parts).toBeGreaterThan(8)
     expect(dragon.measure!.triangles).toBeGreaterThan(8056)
+  })
+
+  it('is one continuous body, not floating beads', () => {
+    // The shipped dragon spaced 15 neck pieces 2.2 studs apart at 1.9 radius,
+    // so the render showed beads where a neck should be. Every chain group is
+    // marked, and the validator rejects a gap, so this asserts the spec it
+    // builds from is the joined one.
+    expect(validateSpec(CASES.find((entry) => entry.name === 'dragon')!.spec)).toEqual([])
+    const chains = (CASES.find((entry) => entry.name === 'dragon')!.spec.parts as unknown[]).filter(
+      (part) => (part as { chain?: boolean }).chain === true
+    )
+    expect(chains.length).toBeGreaterThanOrEqual(3)
   })
 
   it('scores far above the baseline prompt', () => {
